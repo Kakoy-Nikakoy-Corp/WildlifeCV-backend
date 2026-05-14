@@ -22,3 +22,8 @@ def get_project_root():
             raise FileNotFoundError(f"Корень проекта {PROJECT_NAME} не найден.")
         current_path = current_path.parent
     return current_path
+
+
+def get_videos_dpath() -> Path:
+    """Возвращает путь к директории с видео пользователей."""
+    return get_project_root() / 'uploads'
