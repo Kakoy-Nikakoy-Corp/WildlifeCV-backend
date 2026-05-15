@@ -20,16 +20,12 @@ class Recognition:
 
 
 class RecognitionStatus(str, Enum):
-    """
-    Статус ответа модели. Взят из фронтенда.
-    """
+    """Статус ответа модели. Взят из фронтенда."""
     SUCCESS = 'success'
     ERROR = 'error'
 
 
 class RecognitionResponse(TypedDict):
-    """
-    Формат ответа эндпоинта. Взята из фронтенда.
-    """
+    """Формат ответа эндпоинта. Взята из фронтенда."""
     status: RecognitionStatus
     timestamps: list[str]  # 'HH:MM:SS - HH:MM:SS', '...'

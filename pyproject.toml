@@ -10,4 +10,10 @@ dependencies = [
     "opencv-python>=4.13.0.92",
     "pydantic>=2.13.4",
     "pytest>=9.0.3",
+    "unicorn>=2.1.4",
 ]
+
+[tool.pytest]
+minversion = "9.0"
+testpaths = ["tests"]
+pythonpath = ["."]

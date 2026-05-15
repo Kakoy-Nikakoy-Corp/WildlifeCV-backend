@@ -1,39 +1,35 @@
 from pathlib import Path
-from typing import Protocol, TypeAlias
 
-from cv2.typing import MatLike
+from cv2 import VideoCapture
 
+from src.doubles import ModelInterface
 from src.types import Recognition
 
 
-OpenCVFrame: TypeAlias = MatLike
-
-
-class ModelInterface(Protocol):
-    """Интерфейс класса модели."""
-    def recognise(self, frame) -> Recognition:
-        ...
-
-
-class ModelDouble:
-    """Заглушка модели."""
-    def recognise(self, frame: OpenCVFrame) -> Recognition:
-        """
-        Ищет барса на изображении.
-
-        Parameters:
-            frame: Изображение
-        """
-        ...
-
-
-def rolling_window_double(recognitions: list[Recognition]) -> list[str]:
+def get_recognitions(model: ModelInterface, video_path: Path) -> list[Recognition]:
     """
-    Заглушка функции rolling window.
+    Разбирает видео на кадры и отправляет их в модель.
 
     Parameters:
-        recognitions: Список пар 'вероятность+координаты bbox'
+        model: Объект модели
+        video_path: Путь до модели
     Returns:
-        Список таймкодов
+        Список Recognition
     """
-    ...
+    # Открываем видео
+    video = VideoCapture(str(video_path))
+    if not video.isOpened():
+        raise FileNotFoundError(f"Не удалось открыть видео '{video_path}'")
+
+    # Читаем по кадру и передаем кадр в модель
+    frames: list[Recognition] = []
+    while True:
+        success, frame = video.read()
+        if not success:
+            break
+        # Обращаемся к модели
+        result = model.recognise(frame)
+        frames.append(result)
+
+    video.release()
+    return frames

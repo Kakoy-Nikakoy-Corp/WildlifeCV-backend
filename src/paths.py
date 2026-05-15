@@ -24,6 +24,35 @@ def get_project_root():
     return current_path
 
 
-def get_videos_dpath() -> Path:
-    """Возвращает путь к директории с видео пользователей."""
+@fixdir
+def get_uploads_dpath() -> Path:
+    """Возвращает путь к директории с файлами, загруженными пользователями."""
     return get_project_root() / 'uploads'
+
+
+@fixdir
+def get_videos_dpath() -> Path:
+    """Возвращает путь к директории с загруженными видео."""
+    return get_uploads_dpath() / 'videos'
+
+
+@fixdir
+def get_images_dpath() -> Path:
+    """Возвращает путь к директории с загруженными фото."""
+    return get_uploads_dpath() / 'images'
+
+
+@fixdir
+def get_archives_dpath() -> Path:
+    """Возвращает путь к директории с загруженными архивами."""
+    return get_uploads_dpath() / 'archives'
+
+
+def get_tests_dpath() -> Path:
+    """Возвращает путь к директории с тестами."""
+    return get_project_root() / 'tests'
+
+
+def get_test_videos_dpath() -> Path:
+    """Возвращает путь к директории с тестовыми видео."""
+    return get_tests_dpath() / 'videos'
