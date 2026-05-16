@@ -7,13 +7,20 @@ requires-python = "~=3.13.0"
 dependencies = [
     "fastapi[standard]>=0.136.1",
     "numpy>=2.4.4",
-    "opencv-python>=4.13.0.92",
     "pydantic>=2.13.4",
-    "pytest>=9.0.3",
-    "unicorn>=2.1.4",
+    "uvicorn>=0.46.0",
 ]
 
 [tool.pytest]
 minversion = "9.0"
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "opencv-python>=4.13.0.92",
+    "pytest>=9.0.3",
+]
+prod = [
+    "opencv-python-headless>=4.13.0.92",
+]
