@@ -16,7 +16,7 @@ logger.add('model_inf.log')
 @dataclass(slots=True, frozen=True)
 class Frame:
     timecode: Timecode
-    confs: list[float] | None
+    confs: list[float]
     bboxes_coords: list[list[float] | None]
 
 
@@ -34,7 +34,7 @@ class Model:
     def __init__(self, weights_path: Path = get_yolo_weights_path()) -> None:
         self.model = YOLO(weights_path)
 
-    def recognise(self, video_path: Path, window_coef: float = 1.5, threshold: float = 0.4) -> list[str]:
+    def recognise(self, video_path: Path, window_coef: float = 1.5, threshold: float = 0.4, smoothing_interval: float = 2) -> list[str]:
         """
         Передает видео в модель и rolling window.
 
@@ -43,6 +43,8 @@ class Model:
             window_coef: Коэффициент длины окна поиска.
 
             Длина окна = FPS * window_coef
+
+            smoothing_interval: Максимальный промежуток между интервалами для их слияния (в секундах)
             threshold: Порог обнаружения барса в rolling window.
 
         Returns:
@@ -64,7 +66,7 @@ class Model:
         avg_window_conf = 0.
         ongoing_timeinterval = False
         timeintervals: list[TimeInterval] = []
-        last_ending = SAMPLE_FRAME
+        last_ending: Timecode = None
         for result in results:
             boxes = result.boxes
             confs: list[float] = boxes.conf.tolist()
@@ -82,7 +84,8 @@ class Model:
                 if avg_window_conf >= threshold and not ongoing_timeinterval:
                     ongoing_timeinterval = True
                     start = gunbye_frame.timecode
-                    if start >= last_ending:
+                    if (last_ending is None or
+                        start >= last_ending + Timecode(FPS, start_seconds=smoothing_interval)):
                         timeinterval = TimeInterval(start=start, end=None)
                         timeintervals.append(timeinterval)
 
