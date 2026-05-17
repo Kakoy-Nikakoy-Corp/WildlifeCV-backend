@@ -1,6 +1,6 @@
 services:
   api:
-    build: /<path_to_package>/WildlifeCV-backend
+    build: .
     container_name: wcv-backend
     ports:
       - "3001:3001"
