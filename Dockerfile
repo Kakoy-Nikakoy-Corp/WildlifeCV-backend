@@ -5,7 +5,8 @@ WORKDIR /app
 COPY ./pyproject.toml ./
 
 # libxcb1 - for opecv-python in slim python image
-RUN pip install .
+RUN pip install . && \
+    pip install --reinstall --no-binary opencv-python --no-deps opencv-python
 
 COPY . .
 

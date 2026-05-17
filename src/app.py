@@ -45,7 +45,7 @@ async def recognise(file: UploadFile) -> RecognitionResponse:
     """
     # Проверка есть на фронтенде, бэкенд ее дублирует
     # Она нужна для роутинга внутри эндпоинта
-    ALLOWED_VIDEO_MIMES = {'video/mp4', 'video/x-matroska'}
+    ALLOWED_VIDEO_MIMES = {'video/mp4', 'video/x-matroska', 'video/matroska'}
     ALLOWED_IMAGE_MIMES = {'image/jpeg', 'image/png'}
     ALLOWED_ARCHIVE_MIMES = {'application/zip', 'application/x-7z-compressed'}
     if file.content_type in ALLOWED_VIDEO_MIMES:
