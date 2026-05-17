@@ -56,3 +56,14 @@ def get_tests_dpath() -> Path:
 def get_test_videos_dpath() -> Path:
     """Возвращает путь к директории с тестовыми видео."""
     return get_tests_dpath() / 'videos'
+
+
+@fixdir
+def get_model_weights_dpath() -> Path:
+    """Возвращает путь к директории с весамим моделей."""
+    return get_project_root() / 'weights'
+
+
+def get_yolo_weights_path() -> Path:
+    """Возвращает путь к актуальным весам YOLO26."""
+    return get_model_weights_dpath() / 'best.pt'

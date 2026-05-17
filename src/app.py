@@ -6,19 +6,13 @@ import cv2
 from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.model import Model
 from src.paths import get_videos_dpath
-from src.types import Recognition, RecognitionResponse, RecognitionStatus
-from src.doubles import ModelInterface, ModelDouble, rolling_window_double
-from src.utils import get_recognitions
+from src.types import RecognitionResponse, RecognitionStatus
 
 
 app = FastAPI()
-# В аннотации временно протокол, а не обычный класс, т.к.
-# модель - сфера ответственности Максима,
-# я в нее лезу по минимуму.
-# Бэкенду нужна единственная гарантия -
-# класс модели соответствует протоколу ModelInterface.
-model: ModelInterface = ModelDouble()
+model = Model()
 
 origins = [
     "http://localhost:5173/",
@@ -50,7 +44,7 @@ async def recognise(file: UploadFile) -> RecognitionResponse:
     """
     # Проверка есть на фронтенде, бэкенд ее дублирует
     # Она нужна для роутинга внутри эндпоинта
-    ALLOWED_VIDEO_MIMES = {'video/mp4', 'video/mkv'}
+    ALLOWED_VIDEO_MIMES = {'video/mp4', 'video/x-matroska'}
     ALLOWED_IMAGE_MIMES = {'image/jpeg', 'image/png'}
     ALLOWED_ARCHIVE_MIMES = {'application/zip', 'application/x-7z-compressed'}
     if file.content_type in ALLOWED_VIDEO_MIMES:
@@ -84,11 +78,9 @@ async def recognise(file: UploadFile) -> RecognitionResponse:
                     video_path.unlink()
                 raise HTTPException(status_code=500, detail="Ошибка при сохранении файла")
 
-            frames = get_recognitions(model, video_path)
-
-            # Передаем кадры в функцию rolling window
-            timestamps = rolling_window_double(frames)
-            return {'status': RecognitionStatus.SUCCESS, 'timestamps': timestamps}
+            # Предикты + rolling window
+            timestrings = model.recognise(video_path)
+            return {'status': RecognitionStatus.SUCCESS, 'timestrings': timestrings}
 
         case 'image':
             # Собираем файлу уникальное имя

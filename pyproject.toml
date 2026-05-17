@@ -6,9 +6,14 @@ readme = "README.md"
 requires-python = "~=3.13.0"
 dependencies = [
     "fastapi[standard]>=0.136.1",
+    "loguru>=0.7.3",
     "numpy>=2.4.4",
     "pydantic>=2.13.4",
+    "timecode>=1.5.1",
+    "ultralytics>=8.4.51",
     "uvicorn>=0.46.0",
+    "opencv-python>=4.13.0.92; sys_platform == 'win32'",
+    "opencv-python-headless>=4.13.0.92; sys_platform == 'linux'",
 ]
 
 [tool.pytest]
@@ -18,9 +23,5 @@ pythonpath = ["."]
 
 [dependency-groups]
 dev = [
-    "opencv-python>=4.13.0.92",
     "pytest>=9.0.3",
-]
-prod = [
-    "opencv-python-headless>=4.13.0.92",
 ]

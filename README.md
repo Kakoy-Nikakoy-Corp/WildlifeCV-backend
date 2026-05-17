@@ -23,4 +23,6 @@ services:
     restart: unless-stopped
 ```
 Запускайте контейнеры:
-`docker compose up -d`
+```shell
+docker compose up -d
+```

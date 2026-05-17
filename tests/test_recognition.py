@@ -7,7 +7,6 @@ from src.app import app
 from src.doubles import ModelDouble, ModelInterface
 from src.paths import get_test_videos_dpath
 from src.types import Recognition
-from src.utils import get_recognitions
 
 
 @pytest.fixture(scope='session')
