@@ -3,6 +3,7 @@ FROM ultralytics/ultralytics:latest
 WORKDIR /app
 
 COPY ./pyproject.toml ./
+
 RUN pip install .
 
 COPY . .
