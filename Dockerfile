@@ -1,9 +1,12 @@
-FROM python:3.13-slim-trixie
+FROM ultralytics/ultralytics:latest
 
 WORKDIR /app
 
 COPY ./pyproject.toml ./
-RUN pip install .
+
+# libxcb1 - for opecv-python in slim python image
+RUN apt install libxcb1 && \
+    pip install .
 
 COPY . .
 

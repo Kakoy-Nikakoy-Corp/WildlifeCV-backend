@@ -1,0 +1,15 @@
+services:
+  api:
+    build: /<path_to_package>/WildlifeCV-backend
+    container_name: wcv-backend
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

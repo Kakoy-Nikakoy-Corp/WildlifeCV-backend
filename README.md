@@ -8,21 +8,8 @@ uv sync
 
 ## Запуск
 ```shell 
-uv run uvicorn src.main:app
+uv run uvicorn src.app:app --host 0.0.0.0 --port 3001
 ```
 
 ## Запуск через Docker Compose
-Добавьте сервис в `docker-compose.yaml`:
-```yaml
-services:
-  api:
-    build: /<path_to_package>/WildlifeCV-backend
-    container_name: wcv-backend
-    ports:
-      - "3001:3001"
-    restart: unless-stopped
-```
-Запускайте контейнеры:
-```shell
-docker compose up -d
-```
+Смотрите `docker-compose.yaml`
