@@ -17,7 +17,7 @@ model = Model()
 origins = [
     "http://localhost:5173",
     "https://localhost:5173",
-    "https://irbis.wild1.net"
+    "https://irbis.wild1.net",
     "https://api.irbis.wild1.net"
 ]
 
