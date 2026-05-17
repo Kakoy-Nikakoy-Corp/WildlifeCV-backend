@@ -3,13 +3,7 @@ FROM ultralytics/ultralytics:latest
 WORKDIR /app
 
 COPY ./pyproject.toml ./
-
-ENV CMAKE_ARGS="-D WITH_FFMPEG=ON"
-
-# libxcb1 - for opecv-python in slim python image
-RUN apt install gcc && \
-    pip install . && \
-    pip install --force-reinstall --no-binary opencv-python --no-deps opencv-python
+RUN pip install .
 
 COPY . .
 
