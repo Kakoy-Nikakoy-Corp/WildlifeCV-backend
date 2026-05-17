@@ -4,6 +4,8 @@ WORKDIR /app
 
 COPY ./pyproject.toml ./
 
+ENV CMAKE_ARGS="-D WITH_FFMPEG=ON"
+
 # libxcb1 - for opecv-python in slim python image
 RUN pip install . && \
     pip install --reinstall --no-binary opencv-python --no-deps opencv-python
