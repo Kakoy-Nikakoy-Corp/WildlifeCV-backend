@@ -1,6 +1,8 @@
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+import os
+import sys
 
 from torchcodec.decoders import VideoDecoder
 from loguru import logger
@@ -10,7 +12,7 @@ from ultralytics import YOLO
 from src.paths import get_yolo_weights_path
 
 
-logger.add('model_inf.log')
+logger.remove()
 
 
 @dataclass(slots=True, frozen=True)
@@ -32,7 +34,12 @@ class TimeInterval:
 
 class Model:
     def __init__(self, weights_path: Path = get_yolo_weights_path()) -> None:
-        self.model = YOLO(weights_path)
+        self.verbose = os.getenv('IRBIS_PROD') is None
+        self.model = YOLO(weights_path, verbose=self.verbose)
+
+        loglevel = 'INFO' if self.verbose else 'WARNING'
+        logger.add('model_inf.log', level=loglevel)
+        logger.add(sys.stderr, level=loglevel)
 
     def recognise(self, video_path: Path, window_coef: float = 1.5, threshold: float = 0.4, smoothing_interval: float = 2) -> list[str]:
         """
