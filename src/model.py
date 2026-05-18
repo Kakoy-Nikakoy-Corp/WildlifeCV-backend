@@ -76,7 +76,7 @@ class Model:
         last_ending: Timecode | None = None
         for frame_tensor in video:
             frame_np = frame_tensor.permute(1, 2, 0).contiguous().cpu().numpy()
-            result = self.model(frame_np)[0]
+            result = self.model(frame_np, verbose=self.verbose)[0]
 
             boxes = result.boxes
             confs: list[float] = boxes.conf.tolist()
