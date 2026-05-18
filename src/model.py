@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from torchcodec.decoders import VideoDecoder
+from torchcodec.transforms import Resize
 from loguru import logger
 from timecode import Timecode
 from ultralytics import YOLO
@@ -50,7 +51,13 @@ class Model:
         Returns:
             Список TimeInterval
         """
-        video = VideoDecoder(video_path, seek_mode="approximate")
+        video = VideoDecoder(
+            video_path,
+            transforms=[
+                Resize(size=(640, 640))
+            ],
+            seek_mode="approximate"
+        )
 
         FPS = video.metadata.average_fps
         SAMPLE_FRAME = Timecode(FPS)
