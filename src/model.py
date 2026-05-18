@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from torchcodec.decoders import VideoDecoder
-from torchcodec.transforms import Resize
 from loguru import logger
 from timecode import Timecode
 from ultralytics import YOLO
@@ -53,10 +52,7 @@ class Model:
         """
         video = VideoDecoder(
             video_path,
-            transforms=[
-                Resize(size=(640, 640))
-            ],
-            seek_mode="exact"
+            seek_mode="approximate"
         )
 
         FPS = video.metadata.average_fps
@@ -71,11 +67,9 @@ class Model:
         is_recording = False
         intervals: list[TimeInterval] = []
         last_ending: Timecode | None = None
-        for frame in video:
-            # Convert frame from CHW to float32 normalized BCHW
-            frame = frame.unsqueeze(0).float() / 255.0
-
-            result = self.model(frame)[0]
+        for frame_tensor in video:
+            frame_np = frame_tensor.permute(1, 2, 0).contiguous().cpu().numpy()
+            result = self.model(frame_np)[0]
 
             boxes = result.boxes
             confs: list[float] = boxes.conf.tolist()
