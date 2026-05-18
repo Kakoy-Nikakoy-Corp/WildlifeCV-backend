@@ -61,4 +61,4 @@ def get_model_weights_dpath() -> Path:
 
 def get_yolo_weights_path() -> Path:
     """Возвращает путь к актуальным весам YOLO26."""
-    return get_model_weights_dpath() / 'best.pt'
+    return get_model_weights_dpath() / 'best.engine'

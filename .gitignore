@@ -3,8 +3,8 @@ venv/
 __pycache__/
 .pytest_cache/
 *.env
-*.pt
 uploads/
 *.log
 tests/
 .idea/
+weights/

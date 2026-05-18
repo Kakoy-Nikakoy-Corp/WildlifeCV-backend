@@ -21,6 +21,9 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [dependency-groups]
+cuda = [
+    "tensorrt>=10.16.1.11",
+]
 dev = [
     "pytest>=9.0.3",
 ]
