@@ -56,7 +56,7 @@ class Model:
             transforms=[
                 Resize(size=(640, 640))
             ],
-            seek_mode="approximate"
+            seek_mode="exact"
         )
 
         FPS = video.metadata.average_fps
@@ -72,7 +72,7 @@ class Model:
         intervals: list[TimeInterval] = []
         last_ending: Timecode | None = None
         for frame in video:
-            # Convert frame from CHW to float32 normalized BCWH
+            # Convert frame from CHW to float32 normalized BCHW
             frame = frame.unsqueeze(0).float() / 255.0
 
             result = self.model(frame)[0]
