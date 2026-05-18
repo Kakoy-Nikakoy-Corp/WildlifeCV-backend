@@ -52,7 +52,7 @@ class Model:
         """
         video = VideoDecoder(
             video_path,
-            seek_mode="approximate"
+            seek_mode="exact"
         )
 
         FPS = video.metadata.average_fps
