@@ -75,7 +75,7 @@ class Model:
             # Convert frame from CHW to float32 normalized BCWH
             frame = frame.unsqueeze(0).float() / 255.0
 
-            result = self.model(frame)
+            result = self.model(frame)[0]
 
             boxes = result.boxes
             confs: list[float] = boxes.conf.tolist()
