@@ -1,10 +1,4 @@
-from typing import Protocol, TypeAlias
-
-from cv2.typing import MatLike
-from numpy import ndarray
-
-
-OpenCVFrame: TypeAlias = MatLike
+from typing import Protocol
 
 
 class ModelInterface(Protocol):
@@ -15,7 +9,7 @@ class ModelInterface(Protocol):
 
 class ModelDouble:
     """Заглушка модели."""
-    def recognise(self, frame: OpenCVFrame = ndarray([])):
+    def recognise(self, frame):
         """
         Ищет барса на изображении.
 

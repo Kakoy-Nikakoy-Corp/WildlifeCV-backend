@@ -2,7 +2,7 @@ from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
-from cv2 import VideoCapture, CAP_PROP_FPS
+from torchcodec.decoders import VideoDecoder
 from loguru import logger
 from timecode import Timecode
 from ultralytics import YOLO
@@ -50,24 +50,26 @@ class Model:
         Returns:
             Список TimeInterval
         """
-        results = self.model(video_path, stream=True)
+        video = VideoDecoder(video_path, seek_mode="approximate")
 
-        # Milliseconds per frame
-        video = VideoCapture(str(video_path))
-        FPS = video.get(CAP_PROP_FPS)
-        logger.info(f"FPS: {FPS}")
-        video.release()
+        FPS = video.metadata.average_fps
         SAMPLE_FRAME = Timecode(FPS)
+        WINDOW_SIZE = int(FPS * window_coef)
+        logger.info(f"FPS: {FPS}")
 
         # Rolling Window Mechanism
         curr_timecode = SAMPLE_FRAME
-        window_size = int(FPS * window_coef)
         window: deque[Frame] = deque()
         avg_window_conf = 0.
-        ongoing_timeinterval = False
-        timeintervals: list[TimeInterval] = []
-        last_ending: Timecode = None
-        for result in results:
+        is_recording = False
+        intervals: list[TimeInterval] = []
+        last_ending: Timecode | None = None
+        for frame in video:
+            # Convert frame from CHW to float32 normalized BCWH
+            frame = frame.unsqueeze(0).float() / 255.0
+
+            result = self.model(frame)
+
             boxes = result.boxes
             confs: list[float] = boxes.conf.tolist()
             bboxes_coords: list = boxes.xyxy.tolist()
@@ -77,29 +79,28 @@ class Model:
 
             frame = Frame(curr_timecode, confs, bboxes_coords)
             window.append(frame)
-            avg_window_conf += max(confs) / window_size
+            avg_window_conf += max(confs) / WINDOW_SIZE
 
-            if len(window) == window_size:
+            if len(window) == WINDOW_SIZE:
                 gunbye_frame = window.popleft()
-                if avg_window_conf >= threshold and not ongoing_timeinterval:
-                    ongoing_timeinterval = True
+                if avg_window_conf >= threshold and not is_recording:
+                    is_recording = True
                     start = gunbye_frame.timecode
                     if (last_ending is None or
                         start >= last_ending + Timecode(FPS, start_seconds=smoothing_interval)):
                         timeinterval = TimeInterval(start=start, end=None)
-                        timeintervals.append(timeinterval)
+                        intervals.append(timeinterval)
 
-                elif avg_window_conf < threshold and ongoing_timeinterval:
-                    ongoing_timeinterval = False
-                    timeintervals[-1].end = curr_timecode
+                elif avg_window_conf < threshold and is_recording:
+                    is_recording = False
+                    intervals[-1].end = curr_timecode
                     last_ending = curr_timecode
 
-                avg_window_conf -= max(gunbye_frame.confs) / window_size
+                avg_window_conf -= max(gunbye_frame.confs) / WINDOW_SIZE
 
             curr_timecode += SAMPLE_FRAME
 
-        if ongoing_timeinterval:
-            timeintervals[-1].end = curr_timecode
-            ongoing_timeinterval = False
+        if is_recording:
+            intervals[-1].end = curr_timecode
 
-        return [str(interval) for interval in timeintervals]
+        return [str(interval) for interval in intervals]
