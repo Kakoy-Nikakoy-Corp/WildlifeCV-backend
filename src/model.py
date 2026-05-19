@@ -17,8 +17,9 @@ logger.remove()
 
 @dataclass(slots=True, frozen=True)
 class Frame:
+    index: int
     timecode: Timecode
-    confs: list[float]
+    max_conf: float
     bboxes_coords: list[list[float] | None]
 
 
@@ -41,6 +42,35 @@ class Model:
         logger.add('model_inf.log', level=loglevel)
         logger.add(sys.stderr, level=loglevel)
 
+    def decode_video(self, video_path):
+        video = VideoDecoder(
+            video_path,
+            seek_mode="exact"
+        )
+
+        fps = video.metadata.average_fps
+        total_frames = video.metadata.num_frames
+        logger.info(f"FPS: {fps}; Total frames: {total_frames}")
+
+        def frame_gen():
+            for frame_index in range(1, total_frames + 1):
+                frame_obj = video.get_frame_at(frame_index - 1)
+                frame_np = frame_obj.data.permute(1, 2, 0).contiguous().cpu().numpy()
+
+                boxes = self.model(frame_np, verbose=self.verbose)[0].boxes
+
+                confs: list[float] = boxes.conf.tolist()
+                bbox_coords: list = boxes.xyxy.tolist()
+                logger.info(f"Frame {frame_index}/{total_frames}\nConfs: {boxes.conf.round(decimals=3)}, Bboxes: {boxes.xyxy.round()}")
+
+                max_conf: float = max(confs) if confs else 0.
+                curr_timecode = Timecode(fps, frames=frame_index)
+
+                yield Frame(frame_index, curr_timecode, max_conf, bbox_coords)
+
+        return fps, total_frames, frame_gen
+
+
     def recognise(self, video_path: Path, window_coef: float = 1.5, threshold: float = 0.4, smoothing_interval: float = 2) -> list[str]:
         """
         Передает видео в модель и rolling window.
@@ -57,58 +87,42 @@ class Model:
         Returns:
             Список TimeInterval
         """
-        video = VideoDecoder(
-            video_path,
-            seek_mode="exact"
-        )
-
-        FPS = video.metadata.average_fps
-        SAMPLE_FRAME = Timecode(FPS)
-        WINDOW_SIZE = int(FPS * window_coef)
-        logger.info(f"FPS: {FPS}")
+        fps, total_frames, frame_gen = self.decode_video(video_path)
+        window_size = int(fps * window_coef)
 
         # Rolling Window Mechanism
-        curr_timecode = SAMPLE_FRAME
-        window: deque[Frame] = deque()
         avg_window_conf = 0.
         is_recording = False
-        intervals: list[TimeInterval] = []
         last_ending: Timecode | None = None
-        for frame_tensor in video:
-            frame_np = frame_tensor.permute(1, 2, 0).contiguous().cpu().numpy()
-            result = self.model(frame_np, verbose=self.verbose)[0]
 
-            boxes = result.boxes
-            confs: list[float] = boxes.conf.tolist()
-            bboxes_coords: list = boxes.xyxy.tolist()
-            if not confs:  # Пустой confs
-                confs.append(0)
-            logger.info(f"Confs: {boxes.conf.round(decimals=3)}, Bboxes: {boxes.xyxy.round()}")
+        window: deque[Frame] = deque()
+        intervals: list[TimeInterval] = []
 
-            frame = Frame(curr_timecode, confs, bboxes_coords)
+        for frame in frame_gen():
             window.append(frame)
-            avg_window_conf += max(confs) / WINDOW_SIZE
+            avg_window_conf += frame.max_conf / window_size
 
-            if len(window) == WINDOW_SIZE:
-                gunbye_frame = window.popleft()
-                if avg_window_conf >= threshold and not is_recording:
-                    is_recording = True
-                    start = gunbye_frame.timecode
-                    if (last_ending is None or
-                        start >= last_ending + Timecode(FPS, start_seconds=smoothing_interval)):
-                        timeinterval = TimeInterval(start=start, end=None)
-                        intervals.append(timeinterval)
+            if frame.index < window_size:
+                continue
 
-                elif avg_window_conf < threshold and is_recording:
-                    is_recording = False
-                    intervals[-1].end = curr_timecode
-                    last_ending = curr_timecode
+            left_frame: Frame = window.popleft()
 
-                avg_window_conf -= max(gunbye_frame.confs) / WINDOW_SIZE
+            # Если превысили порог обнаружения и запись интервала не идёт, начинаем его отслеживать
+            if avg_window_conf >= threshold and not is_recording:
+                is_recording = True
+                start = left_frame.timecode
 
-            curr_timecode += SAMPLE_FRAME
+                if (last_ending is None or
+                    start >= last_ending + Timecode(fps, start_seconds=smoothing_interval)):
+                    timeinterval = TimeInterval(start=start, end=None)
+                    intervals.append(timeinterval)
 
-        if is_recording:
-            intervals[-1].end = curr_timecode
+            # Если ведём запись и упали ниже порога ЛИБО дошли до конца видео, заканчиваем интервал
+            elif is_recording and (avg_window_conf < threshold or frame.index == total_frames):
+                is_recording = False
+                intervals[-1].end = frame.timecode
+                last_ending = frame.timecode
+
+            avg_window_conf -= left_frame.max_conf / window_size
 
         return [str(interval) for interval in intervals]
