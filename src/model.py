@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Iterator, Callable
 import os
 import sys
+import cProfile
 
 import torch
 from torchcodec.decoders import VideoDecoder
@@ -42,9 +43,8 @@ class Model:
         self.model = YOLO(weights_path, verbose=self.verbose)
         self.device = '0' if torch.cuda.is_available() else 'cpu'
 
-        loglevel = 'INFO' if self.verbose else 'WARNING'
-        logger.add('model_inf.log', level=loglevel)
-        logger.add(sys.stderr, level=loglevel)
+        logger.add('model_inf.log', level='INFO')
+        logger.add(sys.stderr, level='INFO')
 
     def predict_frame(self, frame_tensor: torch.Tensor) -> tuple:
         frame_np = frame_tensor.permute(1, 2, 0).contiguous().cpu().numpy()
@@ -55,7 +55,8 @@ class Model:
             confs.append(0.)
         bbox_coords: list = boxes.xyxy.tolist()
 
-        logger.info(f"Confs: {boxes.conf.round(decimals=3)}")
+        if self.verbose:
+            logger.info(f"Confs: {boxes.conf.round(decimals=3)}")
 
         return confs, bbox_coords
 
@@ -73,7 +74,8 @@ class Model:
                 confs, bbox_coords = self.predict_frame(frame_tensor)
                 timecode = Timecode(fps, frames=frame_number)
 
-                logger.info(f"Frame {frame_number}/{total_frames}")
+                if self.verbose:
+                    logger.info(f"Frame {frame_number}/{total_frames}")
 
                 yield Frame(frame_number, timecode, confs, bbox_coords)
 
@@ -98,6 +100,9 @@ class Model:
         Returns:
             Список TimeInterval
         """
+        pr = cProfile.Profile()
+        pr.enable()
+
         total_frames, fps, frame_gen = self.predict_video(video_path, gap)
         window_size = int(fps * window_coef / gap)
         smoothing_tc = Timecode(fps, start_seconds=smoothing_interval)
@@ -138,5 +143,8 @@ class Model:
                 last_interval.end = frame.timecode
 
             avg_window_conf -= max(left_frame.confs) / window_size
+
+        pr.disable()
+        pr.print_stats(sort='cumtime')
 
         return [str(interval) for interval in intervals]
