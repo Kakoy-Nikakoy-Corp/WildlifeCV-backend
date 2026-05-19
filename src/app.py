@@ -63,22 +63,22 @@ async def recognise(file: UploadFile) -> RecognitionResponse:
             video_path = get_videos_dpath() / name
 
             # Загружаем видеофайл чанками
-            # try:
-            #     total_size = 0
-            #     with open(video_path, "wb") as f:
-            #         while chunk := await file.read(CHUNK_SIZE):
-            #             total_size += len(chunk)
-            #             # Проверка есть на фронтенде, бэкенд ее дублирует
-            #             if total_size > MAX_SIZE_BYTES:
-            #                 raise HTTPException(413, detail='Файл слишком большой, лимит - 500 MB')
-            #             f.write(chunk)
-            # except Exception:
-            #     if video_path.exists():
-            #         video_path.unlink()
-            #     raise HTTPException(status_code=500, detail="Ошибка при сохранении файла")
+            try:
+                total_size = 0
+                with open(video_path, "wb") as f:
+                    while chunk := await file.read(CHUNK_SIZE):
+                        total_size += len(chunk)
+                        # Проверка есть на фронтенде, бэкенд ее дублирует
+                        if total_size > MAX_SIZE_BYTES:
+                            raise HTTPException(413, detail='Файл слишком большой, лимит - 500 MB')
+                        f.write(chunk)
+            except Exception:
+                if video_path.exists():
+                    video_path.unlink()
+                raise HTTPException(status_code=500, detail="Ошибка при сохранении файла")
 
             # Предикты + rolling window
-            timestrings = model.recognise(file.file, threshold=0.5, smoothing_interval=3, gap=10)
+            timestrings = model.recognise(video_path, threshold=0.5, smoothing_interval=3, gap=10)
             return {'status': RecognitionStatus.SUCCESS, 'timestrings': timestrings}
 
         case 'image':
