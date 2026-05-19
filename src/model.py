@@ -42,7 +42,7 @@ class Model:
         self.verbose = os.getenv('IRBIS_PROD') is None
         self.model = YOLO(weights_path, verbose=self.verbose, task='detect')
         self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-        
+
         logger.add('model_inf.log', level='INFO')
         logger.add(sys.stderr, level='INFO')
 
@@ -68,7 +68,7 @@ class Model:
             yield confs, bbox_coords
 
     def predict_video(self, video_path: Path, gap: int = 2, batch_size=8) -> tuple[float, int, FrameGeneratorFactory]:
-        video = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=8)
+        video = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=8, device='cuda')
 
         fps = video.metadata.average_fps
         total_frames = video.metadata.num_frames
@@ -114,6 +114,8 @@ class Model:
         Returns:
             Список TimeInterval
         """
+        import time
+        t = time.time()
         pr = cProfile.Profile()
         pr.enable()
 
@@ -159,5 +161,6 @@ class Model:
 
         pr.disable()
         pr.print_stats(sort='cumtime')
+        logger.info(f'Execution time: {time.time() - t}')
 
         return [str(interval) for interval in intervals]
