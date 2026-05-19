@@ -44,7 +44,6 @@ class Model:
         self.device = '0' if torch.cuda.is_available() else 'cpu'
 
         if self.device != 'cpu':
-            self.model.model.half()  # FP16
             self.model.to(self.device)
 
         logger.add('model_inf.log', level='INFO')
