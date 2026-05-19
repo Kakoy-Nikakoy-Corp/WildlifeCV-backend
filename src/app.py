@@ -78,7 +78,7 @@ async def recognise(file: UploadFile) -> RecognitionResponse:
                 raise HTTPException(status_code=500, detail="Ошибка при сохранении файла")
 
             # Предикты + rolling window
-            timestrings = model.recognise(video_path, threshold=0.6, smoothing_interval=1)
+            timestrings = model.recognise(video_path, threshold=0.5, smoothing_interval=3, gap=10)
             return {'status': RecognitionStatus.SUCCESS, 'timestrings': timestrings}
 
         case 'image':

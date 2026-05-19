@@ -17,6 +17,7 @@ logger.remove()
 
 @dataclass(slots=True, frozen=True)
 class Frame:
+    id: int
     index: int
     timecode: Timecode
     max_conf: float
@@ -42,18 +43,20 @@ class Model:
         logger.add('model_inf.log', level=loglevel)
         logger.add(sys.stderr, level=loglevel)
 
-    def decode_video(self, video_path):
+    def decode_video(self, video_path, gap):
         video = VideoDecoder(
             video_path,
             seek_mode="exact"
         )
 
         fps = video.metadata.average_fps
-        total_frames = video.metadata.num_frames
-        logger.info(f"FPS: {fps}; Total frames: {total_frames}")
+        num_real_frames = video.metadata.num_frames
+        logger.info(f"FPS: {fps}; Real frames: {num_real_frames}")
 
         def frame_gen():
-            for frame_index in range(1, total_frames + 1):
+            current_id = 0
+            for frame_index in range(1, num_real_frames + 1, gap):
+                current_id += 1
                 frame_obj = video.get_frame_at(frame_index - 1)
                 frame_np = frame_obj.data.permute(1, 2, 0).contiguous().cpu().numpy()
 
@@ -61,17 +64,17 @@ class Model:
 
                 confs: list[float] = boxes.conf.tolist()
                 bbox_coords: list = boxes.xyxy.tolist()
-                logger.info(f"Frame {frame_index}/{total_frames}\nConfs: {boxes.conf.round(decimals=3)}, Bboxes: {boxes.xyxy.round()}")
+                logger.info(f"Frame index {frame_index}/{num_real_frames}\nConfs: {boxes.conf.round(decimals=3)}, Bboxes: {boxes.xyxy.round()}")
 
                 max_conf: float = max(confs) if confs else 0.
                 curr_timecode = Timecode(fps, frames=frame_index)
 
-                yield Frame(frame_index, curr_timecode, max_conf, bbox_coords)
+                yield Frame(current_id, frame_index, curr_timecode, max_conf, bbox_coords)
 
-        return fps, total_frames, frame_gen
+        return fps, num_real_frames, frame_gen
 
 
-    def recognise(self, video_path: Path, window_coef: float = 1.5, threshold: float = 0.4, smoothing_interval: float = 2) -> list[str]:
+    def recognise(self, video_path: Path, window_coef: float = 1.5, threshold: float = 0.4, smoothing_interval: float = 2, gap: int = 2) -> list[str]:
         """
         Передает видео в модель и rolling window.
 
@@ -87,8 +90,8 @@ class Model:
         Returns:
             Список TimeInterval
         """
-        fps, total_frames, frame_gen = self.decode_video(video_path)
-        window_size = int(fps * window_coef)
+        fps, num_real_frames, frame_gen = self.decode_video(video_path, gap)
+        window_size = int(fps * window_coef / gap)
 
         # Rolling Window Mechanism
         avg_window_conf = 0.
@@ -102,7 +105,7 @@ class Model:
             window.append(frame)
             avg_window_conf += frame.max_conf / window_size
 
-            if frame.index < window_size:
+            if frame.id < window_size:
                 continue
 
             left_frame: Frame = window.popleft()
@@ -118,7 +121,7 @@ class Model:
                     intervals.append(timeinterval)
 
             # Если ведём запись и упали ниже порога ЛИБО дошли до конца видео, заканчиваем интервал
-            elif is_recording and (avg_window_conf < threshold or frame.index == total_frames):
+            elif is_recording and (avg_window_conf < threshold or frame.index + gap >= num_real_frames):
                 is_recording = False
                 intervals[-1].end = frame.timecode
                 last_ending = frame.timecode
