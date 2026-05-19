@@ -41,7 +41,7 @@ class Model:
     def __init__(self, weights_path: Path = get_yolo_weights_path()) -> None:
         self.verbose = os.getenv('IRBIS_PROD') is None
         self.model = YOLO(weights_path, verbose=self.verbose, task='detect')
-        self.device = '0' if torch.cuda.is_available() else 'cpu'
+        self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
         if self.device != 'cpu':
             self.model.to(self.device)
