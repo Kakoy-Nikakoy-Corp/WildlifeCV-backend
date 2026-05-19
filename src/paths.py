@@ -66,4 +66,4 @@ def get_yolo_weights_path() -> Path:
     if torch.cuda.is_available():
         return get_model_weights_dpath() / 'best.engine'
 
-    return get_model_weights_dpath() / 'best.pt'
+    return get_model_weights_dpath() / 'best.onnx'

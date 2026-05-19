@@ -40,44 +40,62 @@ class TimeInterval:
 class Model:
     def __init__(self, weights_path: Path = get_yolo_weights_path()) -> None:
         self.verbose = os.getenv('IRBIS_PROD') is None
-        self.model = YOLO(weights_path, verbose=self.verbose)
+        self.model = YOLO(weights_path, verbose=self.verbose, task='detect')
         self.device = '0' if torch.cuda.is_available() else 'cpu'
+
+        if self.device != 'cpu':
+            self.model.model.half()  # FP16
+            self.model.to(self.device)
 
         logger.add('model_inf.log', level='INFO')
         logger.add(sys.stderr, level='INFO')
 
-    def predict_frame(self, frame_tensor: torch.Tensor) -> tuple:
-        frame_np = frame_tensor.permute(1, 2, 0).contiguous().cpu().numpy()
-        boxes = self.model(frame_np, verbose=self.verbose)[0].boxes
+    def predict_frames(self, frame_tensors: list[torch.Tensor]) -> Iterator[tuple[list[float], list]]:
+        frame_nps = []
+        for frame_tensor in frame_tensors:
+            frame_np = frame_tensor.permute(1, 2, 0).contiguous().cpu().numpy()
+            frame_nps.append(frame_np)
 
-        confs: list[float] = boxes.conf.tolist()
-        if not confs:
-            confs.append(0.)
-        bbox_coords: list = boxes.xyxy.tolist()
+        results = self.model(frame_nps, verbose=self.verbose)
 
-        if self.verbose:
-            logger.info(f"Confs: {boxes.conf.round(decimals=3)}")
+        for result in results:
+            boxes = result.boxes
 
-        return confs, bbox_coords
+            confs: list[float] = boxes.conf.tolist()
+            if not confs:
+                confs.append(0.)
+            bbox_coords: list = boxes.xyxy.tolist()
 
-    def predict_video(self, video_path: Path, gap: int = 2) -> tuple[float, int, FrameGeneratorFactory]:
-        video = VideoDecoder(video_path, seek_mode="exact")
+            if self.verbose:
+                logger.info(f"Confs: {boxes.conf.round(decimals=3)}")
+
+            yield confs, bbox_coords
+
+    def predict_video(self, video_path: Path, gap: int = 2, batch_size=8) -> tuple[float, int, FrameGeneratorFactory]:
+        video = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=8)
 
         fps = video.metadata.average_fps
         total_frames = video.metadata.num_frames
         logger.info(f"FPS: {fps}")
 
         def frame_gen() -> Iterator[Frame]:
-            for frame_number in range(1, total_frames + 1, gap):
-                frame_tensor = video[frame_number - 1]
+            batch = []
+            for i in range(1, total_frames + 1, gap):
+                batch.append(i - 1)
 
-                confs, bbox_coords = self.predict_frame(frame_tensor)
-                timecode = Timecode(fps, frames=frame_number)
+                if len(batch) == batch_size:
+                    frame_tensors = video.get_frames_at(batch).data
+                    frame_tensors = list(frame_tensors.unbind(dim=0))
 
-                if self.verbose:
-                    logger.info(f"Frame {frame_number}/{total_frames}")
+                    for frame_number, (confs, bbox_coords) in zip(batch, self.predict_frames(frame_tensors)):
+                        timecode = Timecode(fps, frames=frame_number + 1)
 
-                yield Frame(frame_number, timecode, confs, bbox_coords)
+                        if self.verbose:
+                            logger.info(f"Frame {frame_number + 1}/{total_frames}")
+
+                        yield Frame(frame_number + 1, timecode, confs, bbox_coords)
+
+                    batch.clear()
 
         return total_frames, fps, frame_gen
 
@@ -114,7 +132,6 @@ class Model:
 
         window: deque[Frame] = deque()
         intervals: list[TimeInterval] = []
-
         for frame in frame_gen():
             window.append(frame)
             avg_window_conf += max(frame.confs) / window_size
