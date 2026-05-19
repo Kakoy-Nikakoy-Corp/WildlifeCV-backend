@@ -8,8 +8,6 @@ dependencies = [
     "fastapi[standard]>=0.136.1",
     "loguru>=0.7.3",
     "numpy>=2.4.4",
-    "onnx>=1.21.0",
-    "onnxruntime>=1.26.0",
     "pydantic>=2.13.4",
     "timecode>=1.5.1",
     "torchcodec>=0.12.0",
@@ -23,9 +21,6 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [dependency-groups]
-cuda = [
-    "tensorrt>=10.16.1.11",
-]
 dev = [
     "pytest>=9.0.3",
 ]

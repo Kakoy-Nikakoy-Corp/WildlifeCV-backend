@@ -8,7 +8,7 @@ RUN apt-get update && \
 
 COPY ./pyproject.toml ./
 
-RUN pip install . --group cuda
+RUN pip install .
 
 COPY . .
 
