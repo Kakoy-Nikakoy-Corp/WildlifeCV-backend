@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Iterator, Callable
 import os
 import sys
-import cProfile
+# import cProfile
 
 import torch
 from torchcodec.decoders import VideoDecoder
@@ -116,8 +116,8 @@ class Model:
         """
         import time
         t = time.time()
-        pr = cProfile.Profile()
-        pr.enable()
+        # pr = cProfile.Profile()
+        # pr.enable()
 
         total_frames, fps, frame_gen = self.predict_video(video_path, gap)
         window_size = int(fps * window_coef / gap)
@@ -159,8 +159,8 @@ class Model:
 
             avg_window_conf -= max(left_frame.confs) / window_size
 
-        pr.disable()
-        pr.print_stats(sort='cumtime')
+        # pr.disable()
+        # pr.print_stats(sort='cumtime')
         logger.info(f'Execution time: {time.time() - t}')
 
         return [str(interval) for interval in intervals]
