@@ -1,10 +1,10 @@
 services:
   api:
     build: .
-    container_name: wcv-backend
+    container_name: backend
+    restart: unless-stopped
     ports:
       - "3001:3001"
-    restart: unless-stopped
     ipc: host
     deploy:
       resources:

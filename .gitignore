@@ -8,3 +8,4 @@ uploads/
 tests/
 .idea/
 weights/
+torchcodec/

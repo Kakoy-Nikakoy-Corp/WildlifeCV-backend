@@ -3,18 +3,22 @@ FROM nvcr.io/nvidia/pytorch:26.04-py3
 WORKDIR /app
 
 RUN apt-get update && \
-    apt-get install -y valgrind ffmpeg && \
+    apt-get install -y cmake ffmpeg libavdevice-dev libavfilter-dev libavformat-dev \ 
+    libavcodec-dev libavutil-dev libswresample-dev libswscale-dev pkg-config && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip install torchcodec --index-url=https://download.pytorch.org/whl/cu132 --break-system-packages
-RUN pip install ultralytics>=8.4.51 --break-system-packages
 RUN pip install fastapi[standard]>=0.136.1 loguru>=0.7.3 numpy>=2.4.4 pydantic>=2.13.4 timecode>=1.5.1 uvicorn>=0.46.0 --break-system-packages
+RUN pip install ultralytics>=8.4.51 --break-system-packages
 
-COPY . .
+COPY torchcodec/ torchcodec/
+RUN pip install --force-reinstall --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu132
+
+ENV ENABLE_CUDA=1
+RUN pip install -e torchcodec --no-build-isolation
+
+COPY src/ src/
+COPY weights/ weights/
 
 EXPOSE 3001
 ENV IRBIS_PROD=1
-#ENV PYTHONMALLOC=malloc
-#CMD ["valgrind", "--tool=memcheck", "--track-origins=yes", "--trace-children=yes", "--show-mismatched-frees=yes", "python", "test_dec.py"]
-#CMD ["valgrind", "--leak-check=full", "--show-leak-kinds=all", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "3001"]
 CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "3001"]
