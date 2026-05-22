@@ -3,7 +3,7 @@ FROM nvcr.io/nvidia/pytorch:26.04-py3
 WORKDIR /app
 
 RUN apt-get update && \
-    apt-get install -y cmake ffmpeg libavdevice-dev libavfilter-dev libavformat-dev \ 
+    apt-get install -y cmake ffmpeg libavdevice-dev libavfilter-dev libavformat-dev \
     libavcodec-dev libavutil-dev libswresample-dev libswscale-dev pkg-config && \
     rm -rf /var/lib/apt/lists/*
 
