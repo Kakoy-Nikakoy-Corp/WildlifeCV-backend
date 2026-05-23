@@ -13,6 +13,7 @@ from timecode import Timecode
 from ultralytics import YOLO
 
 from src.paths import get_yolo_weights_path
+from src.utils import yolo_letterbox
 
 
 type FrameGeneratorFactory = Callable[[], Iterator[Frame]]
@@ -47,12 +48,8 @@ class Model:
         logger.add(sys.stderr, level='INFO')
 
     def predict_frames(self, frame_tensors: list[torch.Tensor]) -> Iterator[tuple[list[float], list]]:
-        frame_nps = []
-        for frame_tensor in frame_tensors:
-            frame_np = frame_tensor.permute(1, 2, 0).contiguous().cpu().numpy()
-            frame_nps.append(frame_np)
-
-        results = self.model(frame_nps, verbose=self.verbose)
+        frame_tensors = yolo_letterbox(frame_tensors)
+        results = self.model(frame_tensors, verbose=self.verbose)
 
         for result in results:
             boxes = result.boxes
@@ -67,8 +64,8 @@ class Model:
 
             yield confs, bbox_coords
 
-    def predict_video(self, video_path: Path, gap: int = 2, batch_size=8) -> tuple[float, int, FrameGeneratorFactory]:
-        video = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=8, device='cuda')
+    def predict_video(self, video_path: Path, gap: int = 2, batch_size=16) -> tuple[float, int, FrameGeneratorFactory]:
+        video = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=1 if self.device == 'cuda' else 8, device='cuda')
 
         fps = video.metadata.average_fps
         total_frames = video.metadata.num_frames
@@ -80,8 +77,7 @@ class Model:
                 batch.append(i - 1)
 
                 if len(batch) == batch_size:
-                    frame_tensors = video.get_frames_at(batch).data
-                    frame_tensors = list(frame_tensors.unbind(dim=0))
+                    frame_tensors = video.get_frames_in_range(min(batch), max(batch) + 1, gap).data
 
                     for frame_number, (confs, bbox_coords) in zip(batch, self.predict_frames(frame_tensors)):
                         timecode = Timecode(fps, frames=frame_number + 1)
