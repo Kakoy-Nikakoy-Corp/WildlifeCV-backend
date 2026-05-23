@@ -3,21 +3,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Callable
 import os
-import sys
-# import cProfile
+import time
+import cProfile
 
 import torch
 from torchcodec.decoders import VideoDecoder
 from loguru import logger
 from timecode import Timecode
 from ultralytics import YOLO
+from ultralytics.engine.results import Results
 
 from src.paths import get_yolo_weights_path
-from src.utils import yolo_letterbox
+from src.utils import preprocess
 
 
 type FrameGeneratorFactory = Callable[[], Iterator[Frame]]
-logger.remove()
+type ParsedResults = tuple[list[float], list]
+
+pr = cProfile.Profile()  # Virtually no performance impact until enabled
 
 
 @dataclass(slots=True, frozen=True)
@@ -40,33 +43,55 @@ class TimeInterval:
 
 class Model:
     def __init__(self, weights_path: Path = get_yolo_weights_path()) -> None:
-        self.verbose = os.getenv('IRBIS_PROD') is None
+        # Debug-related fields
+        self.verbose: bool = os.getenv('IRBIS_PROD') is None
+        self.use_profiler: bool = os.getenv('USE_PROFILER') is not None
+
+        # Instantiate a model and determine a primary computational unit we're using (CUDA/CPU)
         self.model = YOLO(weights_path, verbose=self.verbose, task='detect')
-        self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         logger.add('model_inf.log', level='INFO')
-        logger.add(sys.stderr, level='INFO')
 
-    def predict_frames(self, frame_tensors: list[torch.Tensor]) -> Iterator[tuple[list[float], list]]:
-        frame_tensors = yolo_letterbox(frame_tensors)
-        results = self.model(frame_tensors, verbose=self.verbose)
+    def parse_results(self, results: Results) -> tuple[list[float], list]:
+        boxes = results.boxes  # Contains data for 'detection' task models
 
-        for result in results:
-            boxes = result.boxes
+        # Model confidence must not be empty to avoid sorting issues
+        confs: list[float] = boxes.conf.tolist()
+        if not confs:
+            confs.append(0.)
 
-            confs: list[float] = boxes.conf.tolist()
-            if not confs:
-                confs.append(0.)
-            bbox_coords: list = boxes.xyxy.tolist()
+        bbox_coords: list = boxes.xyxy.tolist()
 
-            if self.verbose:
-                logger.info(f"Confs: {boxes.conf.round(decimals=3)}")
+        if self.verbose:
+            logger.info(f"Confs: {boxes.conf.round(decimals=3)}")
 
-            yield confs, bbox_coords
+        return confs, bbox_coords
+
+    def make_prediction(self, frames: torch.Tensor, single: bool = False) -> Iterator[ParsedResults] | ParsedResults:
+        # Letterbox and normalize tensors
+        preprocessed_frames: torch.Tensor = preprocess(frames)
+
+        # Feed tensors to YOLO to obtain an actual prediction
+        results_list: list[Results] = self.model(preprocessed_frames, verbose=self.verbose)
+
+        # Return a single prediction
+        if single:
+            return self.parse_results(results_list[0])
+
+        # Generate results one by one in case of batch prediction
+        def results_iterator() -> Iterator[ParsedResults]:
+            for results in results_list:
+                yield self.parse_results(results)
+
+        return results_iterator()
 
     def predict_video(self, video_path: Path, gap: int = 2, batch_size=16) -> tuple[float, int, FrameGeneratorFactory]:
+        # This gives substantial performance boosts only on CPU
+        threads = 1 if self.device == 'cuda' else 8
+
         # We are intentionally NOT applying any on-decode transformations to retain original frames for further encoding
-        video = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=1 if self.device == 'cuda' else 8, device='cuda')
+        video = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=threads, device=self.device)
 
         fps = video.metadata.average_fps
         total_frames = video.metadata.num_frames
@@ -78,9 +103,9 @@ class Model:
                 batch.append(i - 1)
 
                 if len(batch) == batch_size:
-                    frame_tensors = video.get_frames_in_range(min(batch), max(batch) + 1, gap).data
+                    frames = video.get_frames_in_range(min(batch), max(batch) + 1, gap).data
 
-                    for frame_number, (confs, bbox_coords) in zip(batch, self.predict_frames(frame_tensors)):
+                    for frame_number, (confs, bbox_coords) in zip(batch, self.make_prediction(frames)):
                         timecode = Timecode(fps, frames=frame_number + 1)
 
                         if self.verbose:
@@ -111,10 +136,10 @@ class Model:
         Returns:
             Список TimeInterval
         """
-        import time
         t = time.time()
-        # pr = cProfile.Profile()
-        # pr.enable()
+
+        if self.use_profiler:
+            pr.enable()
 
         total_frames, fps, frame_gen = self.predict_video(video_path, gap)
         window_size = int(fps * window_coef / gap)
@@ -156,8 +181,10 @@ class Model:
 
             avg_window_conf -= max(left_frame.confs) / window_size
 
-        # pr.disable()
-        # pr.print_stats(sort='cumtime')
+        if self.use_profiler:
+            pr.disable()
+            pr.print_stats(sort='cumtime')
+
         logger.info(f'Execution time: {time.time() - t}')
 
         return [str(interval) for interval in intervals]

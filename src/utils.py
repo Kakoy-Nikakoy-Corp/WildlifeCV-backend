@@ -1,24 +1,25 @@
 import torch
-import torchvision.transforms.v2.functional as F
+import torchvision.transforms.v2.functional as f
 
 
 # TODO: make this match YOLO more precisely (disable antialiasing, specify interpolation method etc.)
-def yolo_letterbox(
+def preprocess(
     img: torch.Tensor, 
-    target_size: int = 640, 
-    pad_value: float = 114.0
+    target_size: int = 640
 ) -> torch.Tensor:
     """
-    YOLO-style letterbox for batch of images (B, C, H, W).
+    Letterboxing and normalization for a raw batch of images (B, C, H, W) or a single image (C, H, W).
     
     Args:
-        img: Input tensor (B, C, H, W) in float [0, 1] or uint8 [0, 255]
+        img: Input tensor (B, C, H, W) or (C, H, W) in uint8 [0, 255]
         target_size: Target square size (default 640)
-        pad_value: Padding value (114 is YOLO default)
     
     Returns:
-        Letterboxed tensor (B, C, target_size, target_size)
+        YOLO inference-ready tensor (B, C, target_size, target_size)
     """
+    if img.ndim == 3:
+        img = img.unsqueeze(0)
+
     B, C, H, W = img.shape
     
     # Calculate scale ratio
@@ -29,13 +30,11 @@ def yolo_letterbox(
     new_w = int(round(W * r))
     
     # Resize
-    resized = F.resize(img, size=[new_h, new_w], antialias=True)
-    
+    resized = f.resize(img, size=[new_h, new_w], antialias=True)
+
     # Create target canvas
-    letterboxed = torch.full((B, C, target_size, target_size), 
-                           fill_value=pad_value,
-                           dtype=img.dtype,
-                           device=img.device)
+    canvas_dim = (B, C, target_size, target_size)
+    letterboxed = torch.full(canvas_dim, fill_value=114.0, dtype=img.dtype, device=img.device)
     
     # Compute padding
     pad_h = (target_size - new_h) // 2
