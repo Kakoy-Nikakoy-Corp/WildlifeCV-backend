@@ -1,9 +1,8 @@
 import torch
-import torchvision.transforms.v2 as T
 import torchvision.transforms.v2.functional as F
-from typing import Tuple
 
 
+# TODO: make this match YOLO more precisely (disable antialiasing, specify interpolation method etc.)
 def yolo_letterbox(
     img: torch.Tensor, 
     target_size: int = 640, 
@@ -46,7 +45,3 @@ def yolo_letterbox(
     letterboxed[:, :, pad_h:pad_h + new_h, pad_w:pad_w + new_w] = resized
     
     return letterboxed / 255.0
-
-YOLOLetterBox = T.Lambda(
-    lambda x: letterbox_func(x, target_size=640, pad_value=114.0)
-)

@@ -65,6 +65,7 @@ class Model:
             yield confs, bbox_coords
 
     def predict_video(self, video_path: Path, gap: int = 2, batch_size=16) -> tuple[float, int, FrameGeneratorFactory]:
+        # We are intentionally NOT applying any on-decode transformations to retain original frames for further encoding
         video = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=1 if self.device == 'cuda' else 8, device='cuda')
 
         fps = video.metadata.average_fps
