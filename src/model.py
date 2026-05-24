@@ -1,6 +1,6 @@
 from collections import deque
 from pathlib import Path
-from typing import Iterator, Callable
+from typing import Iterator
 import os
 import time
 import cProfile
@@ -17,7 +17,6 @@ from src.utils import preprocess
 from src.types import FrameResults, TimeInterval
 
 
-type FrameGeneratorFactory = Callable[[], Iterator[FrameResults]]
 type ParsedResults = tuple[list[float], list]
 
 pr = cProfile.Profile()  # Virtually no performance impact until enabled
@@ -26,8 +25,8 @@ pr = cProfile.Profile()  # Virtually no performance impact until enabled
 class Model:
     def __init__(self, weights_path: Path = get_yolo_weights_path()) -> None:
         # Debug-related fields
-        self.verbose: bool = os.getenv('IRBIS_PROD') is None
-        self.use_profiler: bool = os.getenv('USE_PROFILER') is not None
+        self.verbose: bool = os.getenv('IRBIS_DEBUG') == '1'
+        self.use_profiler: bool = os.getenv('USE_PROFILER') == '1'
 
         # Instantiate a model and determine a primary computational unit we're using (CUDA/CPU)
         self.model = YOLO(weights_path, verbose=self.verbose, task='detect')
@@ -35,7 +34,8 @@ class Model:
 
         logger.add('model_inf.log', level='INFO')
 
-    def parse_results(self, results: Results) -> tuple[list[float], list]:
+    @staticmethod
+    def collect_results(results: Results) -> tuple[list[float], list]:
         boxes = results.boxes  # Contains data for 'detection' task models
 
         # Model confidences must not be empty to avoid sorting issues
@@ -44,9 +44,6 @@ class Model:
             confs.append(0.)
 
         bbox_coords: list[list[float] | None] = boxes.xyxy.tolist()
-
-        if self.verbose:
-            logger.info(f"Confs: {boxes.conf.round(decimals=3)}")
 
         return confs, bbox_coords
 
@@ -59,50 +56,50 @@ class Model:
 
         # Return a single prediction
         if single:
-            return self.parse_results(results_list[0])
+            return self.collect_results(results_list[0])
 
         # Generate results one by one in case of batch prediction
         def results_iterator() -> Iterator[ParsedResults]:
             for results in results_list:
-                yield self.parse_results(results)
+                yield self.collect_results(results)
 
         return results_iterator()
 
-    def predict_video(self, video_path: Path, gap: int = 2, batch_size=16) -> tuple[float, int, FrameGeneratorFactory]:
-        # This gives substantial performance boosts only on CPU
-        threads = 1 if self.device == 'cuda' else 8
+    def process_video(self, video_path: Path, gap: int = 2, batch_size=16) -> tuple[float, int, Iterator[FrameResults]]:
+        # Arbitrary thread count gives substantial performance boosts only on CPU
+        threads = 1 if self.device == 'cuda' else 0
 
         # We are intentionally NOT applying any on-decode transformations to retain original frames for further encoding
         video = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=threads, device=self.device)
 
         fps = video.metadata.average_fps
         total_frames = video.metadata.num_frames
-        logger.info(f"FPS: {fps}")
+        logger.info(f"FPS: {fps}, Total frames: {total_frames}")
 
-        # TODO: rework batch generation
-        def frame_gen() -> Iterator[FrameResults]:
-            batch = []
-            for i in range(1, total_frames + 1, gap):
-                batch.append(i - 1)
+        def frame_results_iterator() -> Iterator[FrameResults]:
+            batch_length = gap * batch_size  # Length is measured in actual frames
 
-                if len(batch) == batch_size:
-                    frames = video.get_frames_in_range(min(batch), max(batch) + 1, gap).data
+            # Iterate over all possible batch starting points
+            for offset in range(0, total_frames, batch_length):
+                frames = video.get_frames_in_range(offset, offset + batch_length, gap).data
 
-                    for frame_number, (confs, bbox_coords) in zip(batch, self.make_prediction(frames)):
-                        timecode = Timecode(fps, frames=frame_number + 1)
+                if self.verbose:
+                    logger.info(f"\nBatch {offset // batch_length}/{total_frames // batch_length}: {len(frames)} frames")
 
-                        if self.verbose:
-                            logger.info(f"Frame {frame_number + 1}/{total_frames}")
+                frame_number = offset + 1 # May equal 1...total_frames
 
-                        yield FrameResults(frame_number + 1, timecode, confs, bbox_coords)
+                # Every batch yields 'batch_size' results with an interval of 'gap' frames between them
+                for confs, bbox_coords in self.make_prediction(frames):
+                    timecode = Timecode(fps, frames=frame_number)
 
-                    batch.clear()
+                    yield FrameResults(frame_number, timecode, confs, bbox_coords)
+                    frame_number += gap
 
-        return total_frames, fps, frame_gen
+        return total_frames, fps, frame_results_iterator()
 
-    def recognise(self, video_path: Path, window_coef: float = 1.5, threshold: float = 0.4, smoothing_interval: float = 2, gap: int = 2) -> list[str]:
+    def find_intervals(self, video_path: Path, window_coef: float = 1.5, threshold: float = 0.4, smoothing_interval: float = 2, gap: int = 2) -> list[str]:
         """
-        Передает видео в модель и rolling window.
+        Search for snow leopard appearances using YOLO26 predictions enhanced with rolling window algorithm.
 
         Parameters:
             video_path: Путь до файла с видео
@@ -110,7 +107,7 @@ class Model:
 
             Длина окна = FPS * window_coef
 
-            smoothing_interval: Максимальный промежуток между интервалами для их слияния (в секундах)
+            smoothing_interval: Максимальный промежуток между интервалами для их слияния (в секундах).
             threshold: Порог обнаружения барса в rolling window.
             gap: Промежуток между "значимыми" кадрами, на которых делает предсказания модель.
 
@@ -124,7 +121,7 @@ class Model:
         if self.use_profiler:
             pr.enable()
 
-        total_frames, fps, frame_gen = self.predict_video(video_path, gap)
+        total_frames, fps, frame_results = self.process_video(video_path, gap)
         window_size = int(fps * window_coef / gap)
         smoothing_tc = Timecode(fps, start_seconds=smoothing_interval)
 
@@ -135,7 +132,7 @@ class Model:
 
         window: deque[FrameResults] = deque()
         intervals: list[TimeInterval] = []
-        for frame in frame_gen():
+        for frame in frame_results:
             window.append(frame)
             avg_window_conf += max(frame.confs) / window_size
 

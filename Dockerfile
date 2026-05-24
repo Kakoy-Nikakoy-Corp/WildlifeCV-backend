@@ -20,5 +20,6 @@ COPY src/ src/
 COPY weights/ weights/
 
 EXPOSE 3001
-ENV IRBIS_PROD=1
+ENV IRBIS_DEBUG=0
+ENV USE_PROFILER=0
 CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "3001"]
