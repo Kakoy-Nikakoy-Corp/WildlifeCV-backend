@@ -20,6 +20,19 @@ minversion = "9.0"
 testpaths = ["tests"]
 pythonpath = ["."]
 
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # Pyflakes (errors)
+    "UP",  # pyupgrade (modernize code for newer Python)
+    "B",   # flake8-bugbear (common bugs and security issues)
+    "SIM", # flake8-simplify (simplify code)
+    "I",   # isort (import sorting),
+    "W",
+    "C901"
+]
+ignore = ['E501']
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",

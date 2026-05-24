@@ -1,21 +1,20 @@
-from collections import deque
-from pathlib import Path
-from typing import Iterator
+import cProfile
 import os
 import time
-import cProfile
+from collections import deque
+from collections.abc import Iterator
+from pathlib import Path
 
 import torch
-from torchcodec.decoders import VideoDecoder
 from loguru import logger
 from timecode import Timecode
+from torchcodec.decoders import VideoDecoder
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
 from src.paths import get_yolo_weights_path
-from src.utils import preprocess
 from src.types import FrameResults, TimeInterval
-
+from src.utils import preprocess
 
 type ParsedResults = tuple[list[float], list]
 
@@ -23,14 +22,18 @@ pr = cProfile.Profile()  # Virtually no performance impact until enabled
 
 
 class Model:
-    def __init__(self, weights_path: Path = get_yolo_weights_path()) -> None:
+    def __init__(self) -> None:
         # Debug-related fields
         self.verbose: bool = os.getenv('IRBIS_DEBUG') == '1'
         self.use_profiler: bool = os.getenv('USE_PROFILER') == '1'
 
-        # Instantiate a model and determine a primary computational unit we're using (CUDA/CPU)
+        # Determine a primary computational unit we're using (CUDA/CPU)
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+        # Instantiate a model
+        weights_path: Path = get_yolo_weights_path()
         self.model = YOLO(weights_path, verbose=self.verbose, task='detect')
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'  # TODO: ensure all device-related logic uses this
+        self.model.to(self.device)
 
         logger.add('model_inf.log', level='INFO')
 
@@ -65,7 +68,7 @@ class Model:
 
         return results_iterator()
 
-    def process_video(self, video_path: Path, gap: int = 2, batch_size=16) -> tuple[float, int, Iterator[FrameResults]]:
+    def process_video(self, video_path: Path, gap: int = 2, batch_size: int = 16) -> tuple[float, int, Iterator[FrameResults]]:
         # Arbitrary thread count gives substantial performance boosts only on CPU
         threads = 1 if self.device == 'cuda' else 0
 
@@ -97,19 +100,28 @@ class Model:
 
         return total_frames, fps, frame_results_iterator()
 
-    def find_intervals(self, video_path: Path, window_coef: float = 1.5, threshold: float = 0.4, smoothing_interval: float = 2, gap: int = 2) -> list[str]:
+    def find_intervals(
+            self,
+            video_path: Path,
+            window_coef: float = 1.5,
+            threshold: float = 0.4,
+            smoothing_interval: float = 2,
+            gap: int = 2,
+            batch_size: int = 16
+    ) -> list[str]:
         """
         Search for snow leopard appearances using YOLO26 predictions enhanced with rolling window algorithm.
 
         Parameters:
-            video_path: Путь до файла с видео
+            video_path: Путь до файла с видео.
             window_coef: Коэффициент длины окна поиска.
 
             Длина окна = FPS * window_coef
 
             smoothing_interval: Максимальный промежуток между интервалами для их слияния (в секундах).
             threshold: Порог обнаружения барса в rolling window.
-            gap: Промежуток между "значимыми" кадрами, на которых делает предсказания модель.
+            gap: Промежуток между "значимыми" кадрами, на которых модель делает предсказания.
+            batch_size: Количество кадров внутри одного пакета.
 
             Увеличение значения этого параметра даёт кратный прирост к производительности ценой точности временных интервалов.
 
@@ -121,7 +133,7 @@ class Model:
         if self.use_profiler:
             pr.enable()
 
-        total_frames, fps, frame_results = self.process_video(video_path, gap)
+        total_frames, fps, frame_results = self.process_video(video_path, gap, batch_size)
         window_size = int(fps * window_coef / gap)
         smoothing_tc = Timecode(fps, start_seconds=smoothing_interval)
 
