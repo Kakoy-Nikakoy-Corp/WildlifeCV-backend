@@ -2,7 +2,6 @@ from pathlib import Path
 from typing import Final
 import uuid
 
-import cv2
 from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,7 +15,6 @@ model = Model()
 
 origins = [
     "http://localhost:5173",
-    "https://localhost:5173",
     "https://irbis.wild1.net",
     "https://api.irbis.wild1.net"
 ]
@@ -38,7 +36,7 @@ async def recognise(file: UploadFile) -> RecognitionResponse:
     Запускает пайплайн на файле.
 
     Parameters:
-        video (UploadFile): Видеофайл
+        file (UploadFile): Видеофайл
 
     Returns:
         Словарь со статусом и таймкодами.
@@ -80,7 +78,7 @@ async def recognise(file: UploadFile) -> RecognitionResponse:
                 raise HTTPException(status_code=500, detail="Ошибка при сохранении файла")
 
             # Предикты + rolling window
-            timestrings = model.recognise(video_path, threshold=0.6, smoothing_interval=1)
+            timestrings = model.find_intervals(video_path, threshold=0.5, smoothing_interval=3, gap=10)
             return {'status': RecognitionStatus.SUCCESS, 'timestrings': timestrings}
 
         case 'image':
@@ -104,8 +102,9 @@ async def recognise(file: UploadFile) -> RecognitionResponse:
                     image_path.unlink()
                 raise HTTPException(status_code=500, detail="Ошибка при сохранении файла")
 
-            image = cv2.imread(str(image_path))
-            if image is not None:
-                recognition = model.recognise(image)
-                # Дальше нужно вернуть что-то фронтенду.
-                # Формата ответа пока нет.
+            # OpenCV deprecated -> use PIL + NumPy for image processing instead
+            # image = cv2.imread(str(image_path))
+            # if image is not None:
+            #     recognition = model.recognise(image)
+
+    return {'status': RecognitionStatus.SUCCESS, 'timestrings': []}

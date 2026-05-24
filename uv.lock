@@ -1,9 +1,11 @@
 version = 1
-revision = 2
-requires-python = ">=3.12.0, <3.13"
+revision = 3
+requires-python = "==3.12.*"
 resolution-markers = [
-    "sys_platform == 'win32'",
-    "sys_platform != 'win32'",
+    "platform_machine != 's390x' and sys_platform == 'win32'",
+    "platform_machine == 's390x' and sys_platform == 'win32'",
+    "platform_machine != 's390x' and sys_platform != 'win32'",
+    "platform_machine == 's390x' and sys_platform != 'win32'",
 ]
 
 [[package]]
@@ -1153,6 +1155,17 @@ wheels = [
 ]
 
 [[package]]
+name = "torchcodec"
+version = "0.12.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1b/f0/c2f0267144813f4d84b2ded95685059ed902be14334118e0f3aa1ba12cff/torchcodec-0.12.0-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:96ae2ea0279cfaf35e81a6b65360dd0282c6d7fa49f95c42092f22e2b957b0fe", size = 4503042, upload-time = "2026-05-14T19:56:50.25Z" },
+    { url = "https://files.pythonhosted.org/packages/0c/e6/f038c25eab9d6310516eee43f232a51b34bc0221c25368faaedcabc21e83/torchcodec-0.12.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:051ce23c36cc16fe559254e131b5f8595a4ea30c6243f4b283e0cfb95ece05a0", size = 2483863, upload-time = "2026-05-14T19:56:51.771Z" },
+    { url = "https://files.pythonhosted.org/packages/11/c7/85d2a991d411d689202f8e493737043d97a7ab3aa2f1bb2b032b05a251aa/torchcodec-0.12.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:c8f93c8b571c9f1ee583306a119a93b6c81e3e6d27bdfb9b5476fdc2850910c6", size = 2434579, upload-time = "2026-05-14T19:56:53.384Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/df/f9995760e90ed768c1a1788121820879e00c81239fec476668e2823b6ce5/torchcodec-0.12.0-cp312-cp312-win_amd64.whl", hash = "sha256:ab4b986de2a2dee68e863980f6240dce45a0c0bc868cca9c0299ac5eca160f04", size = 2129737, upload-time = "2026-05-14T19:56:54.971Z" },
+]
+
+[[package]]
 name = "torchvision"
 version = "0.27.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1346,9 +1359,9 @@ dependencies = [
     { name = "fastapi", extra = ["standard"] },
     { name = "loguru" },
     { name = "numpy" },
-    { name = "opencv-python" },
     { name = "pydantic" },
     { name = "timecode" },
+    { name = "torchcodec" },
     { name = "ultralytics" },
     { name = "uvicorn" },
 ]
@@ -1363,9 +1376,9 @@ requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.136.1" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "numpy", specifier = ">=2.4.4" },
-    { name = "opencv-python", specifier = ">=4.13.0.92" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "timecode", specifier = ">=1.5.1" },
+    { name = "torchcodec", specifier = ">=0.12.0" },
     { name = "ultralytics", specifier = ">=8.4.51" },
     { name = "uvicorn", specifier = ">=0.46.0" },
 ]
