@@ -33,7 +33,6 @@ class Model:
         # Instantiate a model
         weights_path: Path = get_yolo_weights_path()
         self.model = YOLO(weights_path, verbose=self.verbose, task='detect')
-        self.model.to(self.device)
 
         logger.add('model_inf.log', level='INFO')
 
@@ -55,7 +54,7 @@ class Model:
         preprocessed_frames: torch.Tensor = preprocess(frames)
 
         # Feed tensors to YOLO to obtain an actual prediction
-        results_list: list[Results] = self.model(preprocessed_frames, verbose=self.verbose)
+        results_list: list[Results] = self.model(preprocessed_frames, verbose=self.verbose, device=self.device)
 
         # Return a single prediction
         if single:
@@ -77,7 +76,7 @@ class Model:
 
         fps = video.metadata.average_fps
         total_frames = video.metadata.num_frames
-        logger.info(f"FPS: {fps}, Total frames: {total_frames}")
+        logger.info(f"FPS: {fps:.2f}, Total frames: {total_frames}")
 
         def frame_results_iterator() -> Iterator[FrameResults]:
             batch_length = gap * batch_size  # Length is measured in actual frames
@@ -121,9 +120,10 @@ class Model:
             smoothing_interval: Максимальный промежуток между интервалами для их слияния (в секундах).
             threshold: Порог обнаружения барса в rolling window.
             gap: Промежуток между "значимыми" кадрами, на которых модель делает предсказания.
-            batch_size: Количество кадров внутри одного пакета.
 
             Увеличение значения этого параметра даёт кратный прирост к производительности ценой точности временных интервалов.
+
+            batch_size: Количество кадров внутри одного пакета.
 
         Returns:
             Список TimeInterval
