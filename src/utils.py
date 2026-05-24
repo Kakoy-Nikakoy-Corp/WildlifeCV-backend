@@ -2,7 +2,8 @@ import torch
 import torchvision.transforms.v2.functional as f
 
 
-# TODO: make this match YOLO more precisely (disable antialiasing, specify interpolation method etc.)
+# TODO: make this match YOLO letterboxing more precisely (disable antialiasing, specify interpolation method etc.)
+# (while keeping opinionated choices like fill color and device)
 def preprocess(
     img: torch.Tensor, 
     target_size: int = 640

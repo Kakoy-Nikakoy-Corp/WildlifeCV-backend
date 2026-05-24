@@ -1,5 +1,4 @@
 from collections import deque
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Callable
 import os
@@ -15,30 +14,13 @@ from ultralytics.engine.results import Results
 
 from src.paths import get_yolo_weights_path
 from src.utils import preprocess
+from src.types import FrameResults, TimeInterval
 
 
-type FrameGeneratorFactory = Callable[[], Iterator[Frame]]
+type FrameGeneratorFactory = Callable[[], Iterator[FrameResults]]
 type ParsedResults = tuple[list[float], list]
 
 pr = cProfile.Profile()  # Virtually no performance impact until enabled
-
-
-@dataclass(slots=True, frozen=True)
-class Frame:
-    number: int
-    timecode: Timecode
-    confs: list[float]
-    bbox_coords: list[list[float] | None]
-
-
-@dataclass(slots=True)
-class TimeInterval:
-    """Один длинный таймкод."""
-    start: Timecode
-    end: Timecode | None
-
-    def __str__(self) -> str:
-        return f"{self.start}-{self.end}"
 
 
 class Model:
@@ -49,19 +31,19 @@ class Model:
 
         # Instantiate a model and determine a primary computational unit we're using (CUDA/CPU)
         self.model = YOLO(weights_path, verbose=self.verbose, task='detect')
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'  # TODO: ensure all device-related logic uses this
 
         logger.add('model_inf.log', level='INFO')
 
     def parse_results(self, results: Results) -> tuple[list[float], list]:
         boxes = results.boxes  # Contains data for 'detection' task models
 
-        # Model confidence must not be empty to avoid sorting issues
+        # Model confidences must not be empty to avoid sorting issues
         confs: list[float] = boxes.conf.tolist()
         if not confs:
             confs.append(0.)
 
-        bbox_coords: list = boxes.xyxy.tolist()
+        bbox_coords: list[list[float] | None] = boxes.xyxy.tolist()
 
         if self.verbose:
             logger.info(f"Confs: {boxes.conf.round(decimals=3)}")
@@ -97,7 +79,8 @@ class Model:
         total_frames = video.metadata.num_frames
         logger.info(f"FPS: {fps}")
 
-        def frame_gen() -> Iterator[Frame]:
+        # TODO: rework batch generation
+        def frame_gen() -> Iterator[FrameResults]:
             batch = []
             for i in range(1, total_frames + 1, gap):
                 batch.append(i - 1)
@@ -111,7 +94,7 @@ class Model:
                         if self.verbose:
                             logger.info(f"Frame {frame_number + 1}/{total_frames}")
 
-                        yield Frame(frame_number + 1, timecode, confs, bbox_coords)
+                        yield FrameResults(frame_number + 1, timecode, confs, bbox_coords)
 
                     batch.clear()
 
@@ -150,7 +133,7 @@ class Model:
         is_recording = False
         last_interval: TimeInterval | None = None
 
-        window: deque[Frame] = deque()
+        window: deque[FrameResults] = deque()
         intervals: list[TimeInterval] = []
         for frame in frame_gen():
             window.append(frame)
@@ -160,7 +143,7 @@ class Model:
             if len(window) < window_size:
                 continue
 
-            left_frame: Frame = window.popleft()
+            left_frame: FrameResults = window.popleft()
 
             # Если превысили порог обнаружения и запись интервала не идёт, начинаем его отслеживать
             if avg_window_conf >= threshold and not is_recording:
