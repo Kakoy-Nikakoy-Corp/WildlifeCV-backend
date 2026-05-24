@@ -16,7 +16,7 @@ from src.paths import get_yolo_weights_path
 from src.types import FrameResults, TimeInterval
 from src.utils import preprocess
 
-type ParsedResults = tuple[list[float], list]
+type BBoxResults = tuple[list[float], list]
 
 pr = cProfile.Profile()  # Virtually no performance impact until enabled
 
@@ -24,20 +24,29 @@ pr = cProfile.Profile()  # Virtually no performance impact until enabled
 class Model:
     def __init__(self) -> None:
         # Debug-related fields
-        self.verbose: bool = os.getenv('IRBIS_DEBUG') == '1'
-        self.use_profiler: bool = os.getenv('USE_PROFILER') == '1'
+        self.__verbose: bool = os.getenv('IRBIS_DEBUG') == '1'
+        self.__use_profiler: bool = os.getenv('USE_PROFILER') == '1'
 
         # Determine a primary computational unit we're using (CUDA/CPU)
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.__device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         # Instantiate a model
         weights_path: Path = get_yolo_weights_path()
-        self.model = YOLO(weights_path, verbose=self.verbose, task='detect')
+        self.__model = YOLO(weights_path, verbose=self.__verbose, task='detect')
 
         logger.add('model_inf.log', level='INFO')
 
     @staticmethod
-    def collect_results(results: Results) -> tuple[list[float], list]:
+    def __collect_results(results: Results) -> BBoxResults:
+        """
+        Obtain all necessary fields from a `ultralytics.engine.results.Results` object.
+
+        Parameters:
+            results: an object containing single prediction results.
+
+        Returns:
+            A single BBoxResults-type object.
+        """
         boxes = results.boxes  # Contains data for 'detection' task models
 
         # Model confidences must not be empty to avoid sorting issues
@@ -49,30 +58,54 @@ class Model:
 
         return confs, bbox_coords
 
-    def make_prediction(self, frames: torch.Tensor, single: bool = False) -> Iterator[ParsedResults] | ParsedResults:
+    def __make_prediction(self, frames: torch.Tensor, single: bool = False) -> Iterator[BBoxResults] | BBoxResults:
+        """
+        Make a prediction on a single (C, H, W) image or a batch (B, C, H, W) of images.
+
+        Parameters:
+            frames: input data in PyTorch canonical tensor format.
+            single: whether a prediction should be singular or not. This method behaves as an iterator for the latter case.
+
+        Returns:
+            A single BBoxResults-type object or a sequence of them via an Iterator.
+        """
         # Letterbox and normalize tensors
         preprocessed_frames: torch.Tensor = preprocess(frames)
 
         # Feed tensors to YOLO to obtain an actual prediction
-        results_list: list[Results] = self.model(preprocessed_frames, verbose=self.verbose, device=self.device)
+        results_list: list[Results] = self.__model(preprocessed_frames, verbose=self.__verbose, device=self.__device)
 
         # Return a single prediction
         if single:
-            return self.collect_results(results_list[0])
+            return self.__collect_results(results_list[0])
 
         # Generate results one by one in case of batch prediction
-        def results_iterator() -> Iterator[ParsedResults]:
+        def results_iterator() -> Iterator[BBoxResults]:
             for results in results_list:
-                yield self.collect_results(results)
+                yield self.__collect_results(results)
 
         return results_iterator()
 
-    def process_video(self, video_path: Path, gap: int = 2, batch_size: int = 16) -> tuple[float, int, Iterator[FrameResults]]:
+    def __process_video(self, video_path: Path, gap: int = 2, batch_size: int = 16) -> tuple[int, float, Iterator[FrameResults]]:
+        """
+        Given path to a particular video, makes a series of predictions on its frames.
+
+        Parameters:
+            video_path: Путь до файла с видео.
+            gap: Промежуток между "значимыми" кадрами, на которых модель делает предсказания.
+
+            Увеличение значения этого параметра даёт кратный прирост к производительности ценой точности временных интервалов.
+
+            batch_size: Количество кадров внутри одного пакета.
+
+        Returns:
+            Total video frames, frames per second and an iterator over FrameResults.
+        """
         # Arbitrary thread count gives substantial performance boosts only on CPU
-        threads = 1 if self.device == 'cuda' else 0
+        threads = 1 if self.__device == 'cuda' else 0
 
         # We are intentionally NOT applying any on-decode transformations to retain original frames for further encoding
-        video = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=threads, device=self.device)
+        video = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=threads, device=self.__device)
 
         fps = video.metadata.average_fps
         total_frames = video.metadata.num_frames
@@ -85,13 +118,13 @@ class Model:
             for offset in range(0, total_frames, batch_length):
                 frames = video.get_frames_in_range(offset, offset + batch_length, gap).data
 
-                if self.verbose:
+                if self.__verbose:
                     logger.info(f"\nBatch {offset // batch_length}/{total_frames // batch_length}: {len(frames)} frames")
 
                 frame_number = offset + 1 # May equal 1...total_frames
 
                 # Every batch yields 'batch_size' results with an interval of 'gap' frames between them
-                for confs, bbox_coords in self.make_prediction(frames):
+                for confs, bbox_coords in self.__make_prediction(frames):
                     timecode = Timecode(fps, frames=frame_number)
 
                     yield FrameResults(frame_number, timecode, confs, bbox_coords)
@@ -130,10 +163,10 @@ class Model:
         """
         t = time.time()
 
-        if self.use_profiler:
+        if self.__use_profiler:
             pr.enable()
 
-        total_frames, fps, frame_results = self.process_video(video_path, gap, batch_size)
+        total_frames, fps, frame_results = self.__process_video(video_path, gap, batch_size)
         window_size = int(fps * window_coef / gap)
         smoothing_tc = Timecode(fps, start_seconds=smoothing_interval)
 
@@ -173,7 +206,7 @@ class Model:
 
             avg_window_conf -= max(left_frame.confs) / window_size
 
-        if self.use_profiler:
+        if self.__use_profiler:
             pr.disable()
             pr.print_stats(sort='cumtime')
 

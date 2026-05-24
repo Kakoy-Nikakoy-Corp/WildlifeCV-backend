@@ -7,7 +7,7 @@ def preprocess(img: torch.Tensor, target_size: int = 640) -> torch.Tensor:
     """
     Letterboxing and normalization for a raw batch of images (B, C, H, W) or a single image (C, H, W).
 
-    Args:
+    Parameters:
         img: Input tensor (B, C, H, W) or (C, H, W) in uint8 [0, 255]
         target_size: Target square size (default 640)
 
