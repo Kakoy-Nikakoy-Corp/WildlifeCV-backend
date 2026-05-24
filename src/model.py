@@ -13,10 +13,8 @@ from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
 from src.paths import get_yolo_weights_path
-from src.types import FrameResults, TimeInterval
+from src.types import ProcessedFrame, TimeInterval, ModelPrediction
 from src.utils import preprocess
-
-type BBoxResults = tuple[list[float], list]
 
 pr = cProfile.Profile()  # Virtually no performance impact until enabled
 
@@ -37,7 +35,7 @@ class Model:
         logger.add('model_inf.log', level='INFO')
 
     @staticmethod
-    def __collect_results(results: Results) -> BBoxResults:
+    def __collect_results(results: Results) -> ModelPrediction:
         """
         Obtain all necessary fields from a `ultralytics.engine.results.Results` object.
 
@@ -45,20 +43,20 @@ class Model:
             results: an object containing single prediction results.
 
         Returns:
-            A single BBoxResults-type object.
+            A single ModelPrediction object.
         """
         boxes = results.boxes  # Contains data for 'detection' task models
 
-        # Model confidences must not be empty to avoid sorting issues
-        confs: list[float] = boxes.conf.tolist()
-        if not confs:
-            confs.append(0.)
+        # Confidences must not be empty to avoid sorting issues
+        conf: list[float] = boxes.conf.tolist()
+        if not conf:
+            conf.append(0.)
 
-        bbox_coords: list[list[float] | None] = boxes.xyxy.tolist()
+        bbox_coords: torch.Tensor = boxes.xyxy
 
-        return confs, bbox_coords
+        return ModelPrediction(conf, bbox_coords)
 
-    def __make_prediction(self, frames: torch.Tensor, single: bool = False) -> Iterator[BBoxResults] | BBoxResults:
+    def __make_prediction(self, frames: torch.Tensor, single: bool = False) -> Iterator[ModelPrediction] | ModelPrediction:
         """
         Make a prediction on a single (C, H, W) image or a batch (B, C, H, W) of images.
 
@@ -67,7 +65,7 @@ class Model:
             single: whether a prediction should be singular or not. This method behaves as an iterator for the latter case.
 
         Returns:
-            A single BBoxResults-type object or a sequence of them via an Iterator.
+            A single ModelPrediction or a sequence of them via an Iterator.
         """
         # Letterbox and normalize tensors
         preprocessed_frames: torch.Tensor = preprocess(frames)
@@ -80,13 +78,13 @@ class Model:
             return self.__collect_results(results_list[0])
 
         # Generate results one by one in case of batch prediction
-        def results_iterator() -> Iterator[BBoxResults]:
+        def results_iterator() -> Iterator[ModelPrediction]:
             for results in results_list:
                 yield self.__collect_results(results)
 
         return results_iterator()
 
-    def __process_video(self, video_path: Path, gap: int = 2, batch_size: int = 16) -> tuple[int, float, Iterator[FrameResults]]:
+    def __process_video(self, video_path: Path, gap: int = 2, batch_size: int = 16) -> tuple[int, float, Iterator[ProcessedFrame]]:
         """
         Given path to a particular video, makes a series of predictions on its frames.
 
@@ -99,7 +97,7 @@ class Model:
             batch_size: Количество кадров внутри одного пакета.
 
         Returns:
-            Total video frames, frames per second and an iterator over FrameResults.
+            Total video frames, frames per second and an iterator over ProcessedFrame objects.
         """
         # Arbitrary thread count gives substantial performance boosts only on CPU
         threads = 1 if self.__device == 'cuda' else 0
@@ -111,7 +109,7 @@ class Model:
         total_frames = video.metadata.num_frames
         logger.info(f"FPS: {fps:.2f}, Total frames: {total_frames}")
 
-        def frame_results_iterator() -> Iterator[FrameResults]:
+        def frame_results_iterator() -> Iterator[ProcessedFrame]:
             batch_length = gap * batch_size  # Length is measured in actual frames
 
             # Iterate over all possible batch starting points
@@ -124,10 +122,10 @@ class Model:
                 frame_number = offset + 1 # May equal 1...total_frames
 
                 # Every batch yields 'batch_size' results with an interval of 'gap' frames between them
-                for confs, bbox_coords in self.__make_prediction(frames):
+                for pred in self.__make_prediction(frames):
                     timecode = Timecode(fps, frames=frame_number)
 
-                    yield FrameResults(frame_number, timecode, confs, bbox_coords)
+                    yield ProcessedFrame(frame_number, timecode, pred)
                     frame_number += gap
 
         return total_frames, fps, frame_results_iterator()
@@ -166,7 +164,7 @@ class Model:
         if self.__use_profiler:
             pr.enable()
 
-        total_frames, fps, frame_results = self.__process_video(video_path, gap, batch_size)
+        total_frames, fps, frames = self.__process_video(video_path, gap, batch_size)
         window_size = int(fps * window_coef / gap)
         smoothing_tc = Timecode(fps, start_seconds=smoothing_interval)
 
@@ -175,17 +173,17 @@ class Model:
         is_recording = False
         last_interval: TimeInterval | None = None
 
-        window: deque[FrameResults] = deque()
+        window: deque[ProcessedFrame] = deque()
         intervals: list[TimeInterval] = []
-        for frame in frame_results:
+        for frame in frames:
             window.append(frame)
-            avg_window_conf += max(frame.confs) / window_size
+            avg_window_conf += max(frame.prediction.conf) / window_size
 
             # deque len -> O(1)
             if len(window) < window_size:
                 continue
 
-            left_frame: FrameResults = window.popleft()
+            left_frame: ProcessedFrame = window.popleft()
 
             # Если превысили порог обнаружения и запись интервала не идёт, начинаем его отслеживать
             if avg_window_conf >= threshold and not is_recording:
@@ -204,7 +202,7 @@ class Model:
                 is_recording = False
                 last_interval.end = frame.timecode
 
-            avg_window_conf -= max(left_frame.confs) / window_size
+            avg_window_conf -= max(left_frame.prediction.conf) / window_size
 
         if self.__use_profiler:
             pr.disable()

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TypedDict
 
+import torch
 from timecode import Timecode
 
 
@@ -18,12 +19,18 @@ class RecognitionResponse(TypedDict):
 
 
 @dataclass(slots=True, frozen=True)
-class FrameResults:
-    """Snow leopard detection results for a single video frame."""
+class ModelPrediction:
+    """Snow leopard prediction results for a single image."""
+    conf: list[float]
+    bbox_coords: torch.Tensor
+
+
+@dataclass(slots=True, frozen=True)
+class ProcessedFrame:
+    """Video frame with metadata and prediction results."""
     number: int
     timecode: Timecode
-    confs: list[float]
-    bbox_coords: list[list[float] | None]
+    prediction: ModelPrediction
 
 
 @dataclass(slots=True)
