@@ -4,6 +4,7 @@ import uuid
 
 from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import puremagic
 
 from src.model import Model
 from src.paths import get_videos_dpath
@@ -29,11 +30,14 @@ app.add_middleware(
 MAX_SIZE_BYTES: Final = 500*1024*1024
 CHUNK_SIZE: Final = 8*1024*1024  # 8 мебибайт
 
+# Есть middlware, который шарит директорию как роуты в бэке
+@app.get("/video/")
 
-@app.post("/recognise")
+
+@app.post("/recognise/video/")
 async def recognise(file: UploadFile) -> RecognitionResponse:
     """
-    Запускает пайплайн на файле.
+    Запускает пайплайн на видеофайле
 
     Parameters:
         file (UploadFile): Видеофайл
@@ -43,6 +47,10 @@ async def recognise(file: UploadFile) -> RecognitionResponse:
     """
     # Проверка есть на фронтенде, бэкенд ее дублирует
     # Она нужна для роутинга внутри эндпоинта
+    if file.filename is None:
+        raise HTTPException(422, detail='Сервис не может обработать файл без имени :(')
+
+
     ALLOWED_VIDEO_MIMES = {'video/mp4', 'video/x-matroska', 'video/matroska'}
     ALLOWED_IMAGE_MIMES = {'image/jpeg', 'image/png'}
     ALLOWED_ARCHIVE_MIMES = {'application/zip', 'application/x-7z-compressed'}
@@ -55,6 +63,10 @@ async def recognise(file: UploadFile) -> RecognitionResponse:
     else:
         raise HTTPException(status_code=400, detail='Поддерживаются только видео, фото и архивы с фото!')
 
+    if Path(file.filename).suffix is None:
+        ext = puremagic.from_file(file.filename)
+
+    ext = Path(file.filename).suffix
     match route:
         case 'video':
             # Собираем файлу уникальное имя
@@ -108,3 +120,15 @@ async def recognise(file: UploadFile) -> RecognitionResponse:
             #     recognition = model.recognise(image)
 
     return {'status': RecognitionStatus.SUCCESS, 'timestrings': []}
+
+
+@app.post("/recognise/image/")
+    """
+    Запускает пайплайн на изображении.
+
+    Parameters:
+        file (UploadFile): Изображение
+
+    Returns:
+        Словарь со статусом и таймкодами.
+    """
