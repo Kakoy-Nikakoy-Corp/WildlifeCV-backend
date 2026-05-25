@@ -1,6 +1,7 @@
 import torch
 import torchvision.transforms.v2.functional as f
 from torchvision.transforms import InterpolationMode
+from PIL import ImageDraw, ImageFont
 
 from src.types import ScalingParams
 
@@ -87,3 +88,15 @@ def rescale_bboxes(
     bboxes /= p.r
 
     return bboxes
+
+
+def draw_text(img: torch.Tensor, text: str, position: tuple[int, int], color: tuple[int, int, int], size: int = 60):
+    pil_img = f.to_pil_image(img.cpu())
+    font = ImageFont.truetype("fonts/Pangolin.ttf", size)
+
+    draw = ImageDraw.Draw(pil_img)
+    draw.text(position, text, fill=color, font=font, stroke_width=1, stroke_fill='black')
+
+    out_tensor = f.to_image(pil_img)
+
+    return out_tensor.to(device=img.device)

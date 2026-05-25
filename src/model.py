@@ -17,7 +17,7 @@ from ultralytics.engine.results import Results
 
 from src.paths import get_yolo_weights_path
 from src.types import ProcessedFrame, TimeInterval, ModelPrediction, ProcessedVideo
-from src.utils import preprocess, rescale_bboxes
+from src.utils import preprocess, rescale_bboxes, draw_text
 
 pr = cProfile.Profile()  # Virtually no performance impact until enabled
 
@@ -54,7 +54,7 @@ class Model:
         bboxes: torch.Tensor = boxes.xyxy
 
         if conf.numel() == 0:
-            return ModelPrediction(0.0, original_image.unsqueeze(0))
+            return ModelPrediction(0.0, original_image)
 
         # Non-maximum suppression
         idx = nms(bboxes, conf, 0.45)
@@ -76,7 +76,7 @@ class Model:
             label_colors=['crimson', 'mediumseagreen', 'peru', 'navy'],
             font_size=60,
             font='fonts/Pangolin.ttf'
-        ).unsqueeze(0)
+        )
 
         return ModelPrediction(peak_conf, img)
 
@@ -255,7 +255,15 @@ class Model:
             avg_window_conf -= left_frame.prediction.peak_conf / window_size
 
             if is_recording:
-                stream.add_frames(frame.prediction.img)
+                img = frame.prediction.img
+                final_img = draw_text(
+                    img,
+                    str(frame.timecode),
+                    (30, 30),
+                    (255, 255, 255),
+                    size=40
+                )
+                stream.add_frames(final_img.unsqueeze(0))
 
         encoder.close()
 
