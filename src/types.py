@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import Enum
 from typing import TypedDict
@@ -21,17 +22,34 @@ class RecognitionResponse(TypedDict):
 @dataclass(slots=True, frozen=True)
 class ModelPrediction:
     """Snow leopard prediction results for a single image."""
-    conf: list[float]
-    bbox_coords: torch.Tensor
+    peak_conf: float
+    img: torch.Tensor
 
 
 @dataclass(slots=True, frozen=True)
 class ProcessedFrame:
-    """Video frame with metadata and prediction results."""
+    """A single video frame with metadata and prediction results."""
     number: int
     timecode: Timecode
     prediction: ModelPrediction
 
+
+@dataclass(slots=True, frozen=True)
+class ProcessedVideo:
+    fps: float
+    width: int
+    height: int
+    frame_count: int
+    frames: Iterator[ProcessedFrame]
+
+
+@dataclass(slots=True, frozen=True)
+class ScalingParams:
+    r: float
+    new_w: int
+    new_h: int
+    pad_w: int
+    pad_h: int
 
 @dataclass(slots=True)
 class TimeInterval:
