@@ -1,9 +1,10 @@
 from pathlib import Path
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from src.app import app
+from src.model import Model
 from src.paths import get_test_videos_dpath
 
 
@@ -12,9 +13,9 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-# @pytest.fixture(scope='session')
-# def model() -> ModelDouble:
-#     return ModelDouble()
+@pytest.fixture(scope='session')
+def model() -> Model:
+    return Model()
 
 
 @pytest.fixture(scope='session')
@@ -29,12 +30,5 @@ def video_without_irbis() -> Path:
     return get_test_videos_dpath() / 'заяц-беляк.mkv'
 
 
-# def test_model_recognition(
-#     model: ModelDouble,
-#     video_with_irbis: Path,
-# ):
-#     sut = get_recognitions
-#
-#     predictions = sut(model, video_with_irbis)
-#
-#     assert predictions[0] == model.recognise()
+def test_model_recognition():
+    ...

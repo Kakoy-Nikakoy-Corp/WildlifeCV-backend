@@ -1,6 +1,11 @@
+from typing import BinaryIO
+
+from fastapi import UploadFile
 import torch
 import torchvision.transforms.v2.functional as f
 from torchvision.transforms import InterpolationMode
+
+from src.types import DownloadStatus
 
 
 def preprocess(img: torch.Tensor, target_size: int = 640) -> torch.Tensor:
@@ -41,3 +46,35 @@ def preprocess(img: torch.Tensor, target_size: int = 640) -> torch.Tensor:
     letterboxed[:, :, pad_h:pad_h + new_h, pad_w:pad_w + new_w] = resized
 
     return letterboxed / 255.0
+
+
+async def download_file(
+    file: UploadFile,
+    save_path: Path,
+    chunk_size: int = 8*1024*1024,
+    max_size: int = 500*1024*1024
+) -> DownloadStatus:
+    """
+    Загружает файл и возвращает код загрузки.
+
+    Args:
+        file: Файл от фронтенда, который нужно сохранить
+        save_path: Путь до файла, в который будут записаны данные
+        chunk_size: Размер чанка загрузки (в байтах)
+        max_size: Максимальный размер файла (в байтах)
+    """
+    total_size = 0
+    try:
+        with open(save_path, 'wb') as media_file:
+            while chunk := await file.read(chunk_size):
+                total_size += len(chunk)
+                # Проверка есть на фронтенде, бэкенд ее дублирует
+                if total_size > max_size:
+                    # 'Файл слишком большой, лимит - 500 MB'
+                    return DownloadStatus.SIZE_LIMIT
+                media_file.write(chunk)
+        return DownloadStatus.OK
+
+    except Exception:
+        # "Ошибка при сохранении файла"
+        return DownloadStatus.ERROR

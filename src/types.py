@@ -7,16 +7,24 @@ from timecode import Timecode
 
 
 class RecognitionStatus(str, Enum):
-    """Статус ответа модели. Взят из фронтенда."""
-    SUCCESS = 'success'
-    ERROR = 'error'
+    """
+    Статус ответа модели.
+
+    OK: Видео обработано по стандартному сценарию.
+    SIZE_LIMIT: Файл, переданное в эндпоинт, превышает максимальный размер.
+    DOWNLOAD_ERROR: Произошла ошибка во время загрузки файла
+    """
+    OK = 'OK'
+    SIZE_LIMIT = "SIZE_LIMIT"
+    DOWNLOAD_ERROR = "DOWNLOAD_ERROR"
 
 
 class VideoResponse(TypedDict):
-    """Формат ответа эндпоинта. Взята из фронтенда."""
+    """Формат ответа эндпоинта."""
     status: RecognitionStatus
-    timestrings: list[str]  # 'HH:MM:SS - HH:MM:SS', '...'
-    path: Path
+    detail: str
+    timestrings: list[str] | None  # 'HH:MM:SS - HH:MM:SS', '...'
+    path: Path | None
 
 
 @dataclass(slots=True)

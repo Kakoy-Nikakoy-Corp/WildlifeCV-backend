@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Final
+from tempfile import NamedTemporaryFile
 import uuid
 
 from fastapi import FastAPI, UploadFile, HTTPException
@@ -8,7 +9,8 @@ import puremagic
 
 from src.model import Model
 from src.paths import get_videos_dpath
-from src.types import RecognitionResponse, RecognitionStatus
+from src.types import DownloadStatus, VideoRecognitionResponse, VideoResponse, RecognitionStatus
+from src.utils import download_file
 
 
 app = FastAPI()
@@ -29,15 +31,18 @@ app.add_middleware(
 
 MAX_SIZE_BYTES: Final = 500*1024*1024
 CHUNK_SIZE: Final = 8*1024*1024  # 8 мебибайт
+ALLOWED_VIDEO_MIMES = {'video/mp4', 'video/x-matroska', 'video/matroska'}
+ALLOWED_IMAGE_MIMES = {'image/jpeg', 'image/png'}
+ALLOWED_ARCHIVE_MIMES = {'application/zip', 'application/x-7z-compressed'}
 
 # Есть middlware, который шарит директорию как роуты в бэке
 @app.get("/video/")
 
 
 @app.post("/recognise/video/")
-async def recognise(file: UploadFile) -> RecognitionResponse:
+async def recognise_video(video: UploadFile) -> VideoResponse:
     """
-    Запускает пайплайн на видеофайле
+    Запускает пайплайн на видеофайле.
 
     Parameters:
         file (UploadFile): Видеофайл
@@ -45,90 +50,71 @@ async def recognise(file: UploadFile) -> RecognitionResponse:
     Returns:
         Словарь со статусом и таймкодами.
     """
-    # Проверка есть на фронтенде, бэкенд ее дублирует
-    # Она нужна для роутинга внутри эндпоинта
-    if file.filename is None:
-        raise HTTPException(422, detail='Сервис не может обработать файл без имени :(')
 
+    if video.filename is None:
+        raise HTTPException(422, detail='Сервис не обрабатывает файл без имени :(')
 
-    ALLOWED_VIDEO_MIMES = {'video/mp4', 'video/x-matroska', 'video/matroska'}
-    ALLOWED_IMAGE_MIMES = {'image/jpeg', 'image/png'}
-    ALLOWED_ARCHIVE_MIMES = {'application/zip', 'application/x-7z-compressed'}
-    if file.content_type in ALLOWED_VIDEO_MIMES:
-        route = 'video'
-    elif file.content_type in ALLOWED_IMAGE_MIMES:
-        route = 'image'
-    elif file.content_type in ALLOWED_ARCHIVE_MIMES:
-        route = 'multi-image'
-    else:
+    if video.content_type not in ALLOWED_VIDEO_MIMES:
         raise HTTPException(status_code=400, detail='Поддерживаются только видео, фото и архивы с фото!')
 
-    if Path(file.filename).suffix is None:
-        ext = puremagic.from_file(file.filename)
+    # Получаем расширение файла
+    video_name = Path(video.filename)
+    if video_name.suffix is None:
+        ext = puremagic.from_file(video_name)
+    else:
+        ext = video_name.suffix
 
-    ext = Path(file.filename).suffix
-    match route:
-        case 'video':
-            # Собираем файлу уникальное имя
-            ext = Path(file.filename).suffix if file.filename else ".mp4"
-            name = f'{uuid.uuid4()}{ext}'
-            video_path = get_videos_dpath() / name
+    video_path = get_videos_dpath() / f"{uuid.uuid4()}{ext}"
 
-            # Загружаем видеофайл чанками
-            try:
-                total_size = 0
-                with open(video_path, "wb") as f:
-                    while chunk := await file.read(CHUNK_SIZE):
-                        total_size += len(chunk)
-                        # Проверка есть на фронтенде, бэкенд ее дублирует
-                        if total_size > MAX_SIZE_BYTES:
-                            raise HTTPException(413, detail='Файл слишком большой, лимит - 500 MB')
-                        f.write(chunk)
-            except Exception:
-                if video_path.exists():
-                    video_path.unlink()
-                raise HTTPException(status_code=500, detail="Ошибка при сохранении файла")
+    # Загружаем видеофайл
+    download_status = await download_file(video, video_path)
+    match download_status:
+        case DownloadStatus.ERROR:
+            return VideoRecognitionResponse(status='')
 
-            # Предикты + rolling window
-            timestrings = model.find_intervals(video_path, threshold=0.5, smoothing_interval=3, gap=10)
-            return {'status': RecognitionStatus.SUCCESS, 'timestrings': timestrings}
 
-        case 'image':
-            # Собираем файлу уникальное имя
-            ext = Path(file.filename).suffix if file.filename else ".jpg"
-            name = f'{uuid.uuid4()}{ext}'
-            image_path = get_videos_dpath() / name
-
-            # Скачиваем фото по чанкам
-            try:
-                total_size = 0
-                with open(image_path, "wb") as f:
-                    while chunk := await file.read(CHUNK_SIZE):
-                        total_size += len(chunk)
-                        # Проверка есть на фронтенде, бэкенд ее дублирует
-                        if total_size > MAX_SIZE_BYTES:
-                            raise HTTPException(413, detail='Файл слишком большой, лимит - 500 MB')
-                        f.write(chunk)
-            except Exception:
-                if image_path.exists():
-                    image_path.unlink()
-                raise HTTPException(status_code=500, detail="Ошибка при сохранении файла")
-
-            # OpenCV deprecated -> use PIL + NumPy for image processing instead
-            # image = cv2.imread(str(image_path))
-            # if image is not None:
-            #     recognition = model.recognise(image)
-
-    return {'status': RecognitionStatus.SUCCESS, 'timestrings': []}
+        # Предикты + rolling window
+        video_path = Path(video_file.name)
+        timestrings = model.detect_video_timeintervals(video_path)
+    return VideoResponse(
+        status=RecognitionStatus.SUCCESS,
+        timestrings=timestrings,
+        path=Path()  # wait for model class update
+    )
 
 
 @app.post("/recognise/image/")
+async def recognise_image(image: UploadFile):
     """
     Запускает пайплайн на изображении.
 
     Parameters:
-        file (UploadFile): Изображение
+        image (UploadFile): Изображение
 
     Returns:
         Словарь со статусом и таймкодами.
     """
+    if image.filename is None:
+        raise HTTPException(422, detail='Сервис не обрабатывает файл без имени :(')
+
+    if image.content_type not in ALLOWED_IMAGE_MIMES:
+        raise HTTPException(status_code=400, detail='Поддерживаются только видео, фото и архивы с фото!')
+
+    # Получаем суффикс из файла
+    file_name = Path(image.filename)
+    if file_name.suffix is None:
+        ext = puremagic.from_file(file_name)
+    else:
+        ext = file_name.suffix
+
+    # Загружаем видеофайл чанками
+    with NamedTemporaryFile('wb', suffix=ext) as image_file:
+
+        # Предикты + rolling window
+        video_path = Path(image_file.name)
+        timestrings = model.find_intervals(video_path, threshold=0.5, smoothing_interval=3, gap=10)
+    return {
+        'status': RecognitionStatus.SUCCESS,
+        'timestrings': timestrings,
+        'path': Path()  # wait for model class update
+    }
