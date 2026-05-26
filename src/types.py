@@ -44,7 +44,7 @@ class ProcessedVideo:
 
 
 @dataclass(slots=True, frozen=True)
-class ScalingParams:
+class LetterboxParams:
     r: float
     new_w: int
     new_h: int

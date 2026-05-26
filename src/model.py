@@ -11,13 +11,12 @@ from timecode import Timecode
 from torchcodec.decoders import VideoDecoder
 from torchcodec.encoders import Encoder
 from torchvision.ops import nms
-from torchvision.utils import draw_bounding_boxes
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
 from src.paths import get_yolo_weights_path
 from src.types import ProcessedFrame, TimeInterval, ModelPrediction, ProcessedVideo
-from src.utils import preprocess, rescale_bboxes, draw_text
+from src.utils import preprocess, rescale_bboxes, make_glyph_atlas, blit_text, draw_bboxes
 
 pr = cProfile.Profile()  # Virtually no performance impact until enabled
 
@@ -35,10 +34,12 @@ class Model:
         weights_path: Path = get_yolo_weights_path()
         self.__model = YOLO(weights_path, verbose=self.__verbose, task='detect')
 
+        # Set up the Glyph Atlas
+        self.glyph_atlas = make_glyph_atlas()
+
         logger.add('model_inf.log', level='INFO')
 
-    @staticmethod
-    def __postprocess(results: Results, original_image: torch.Tensor) -> ModelPrediction:
+    def __postprocess(self, results: Results, original_image: torch.Tensor) -> ModelPrediction:
         """
         Obtain all necessary fields from a `ultralytics.engine.results.Results` object.
 
@@ -67,16 +68,10 @@ class Model:
         peak_conf = float(conf.max())
 
         labels = list(map(lambda x: str(round(x, 2)), conf.tolist()))
-        img = draw_bounding_boxes(
-            original_image,
-            scaled_bboxes,
-            colors=['brown', 'seagreen', 'orange', 'blue'],
-            width=5,
-            labels=labels,
-            label_colors=['crimson', 'mediumseagreen', 'peru', 'navy'],
-            font_size=60,
-            font='fonts/Pangolin.ttf'
-        )
+        # brown, seagreen, orange, darkviolet
+        colors = [(165, 42, 42), (46, 139, 87), (255, 165, 0), (148, 0, 211)]
+        label_colors = [(230, 230, 250)]  # lavender
+        img = draw_bboxes(original_image, scaled_bboxes, labels, self.glyph_atlas, colors, label_colors, 5)
 
         return ModelPrediction(peak_conf, img)
 
@@ -127,12 +122,12 @@ class Model:
         threads = 1 if self.__device == 'cuda' else 0
 
         # We are intentionally NOT applying any on-decode transformations to retain original frames for further encoding
-        video = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=threads, device=self.__device)
+        decoder = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=threads, device=self.__device)
 
-        fps = video.metadata.average_fps
-        total_frames = video.metadata.num_frames
-        height = video.metadata.height
-        width = video.metadata.width
+        fps = decoder.metadata.average_fps
+        total_frames = decoder.metadata.num_frames
+        height = decoder.metadata.height
+        width = decoder.metadata.width
 
         logger.info(f"FPS: {fps:.2f}, Total frames: {total_frames}, Shape: ({width}, {height})")
 
@@ -141,7 +136,7 @@ class Model:
 
             # Iterate over all possible batch starting points
             for offset in range(0, total_frames, batch_length):
-                frames = video.get_frames_in_range(offset, offset + batch_length, gap).data
+                frames = decoder.get_frames_in_range(offset, offset + batch_length, gap).data
 
                 if self.__verbose:
                     logger.info(f"\nBatch {offset // batch_length}/{total_frames // batch_length}: {len(frames)} frames")
@@ -160,6 +155,7 @@ class Model:
     def find_intervals(
             self,
             video_path: Path,
+            output_path: Path,
             window_coef: float = 1.5,
             threshold: float = 0.4,
             smoothing_interval: float = 2,
@@ -203,29 +199,9 @@ class Model:
         window: deque[ProcessedFrame] = deque()
         intervals: list[TimeInterval] = []
 
-        encoder = Encoder()
-        if self.__device == 'cpu':
-            params = {
-                'codec': 'libx264',
-                'pixel_format': "yuv420p",
-                'crf': 30,
-                'preset': 'ultrafast',
-                'extra_options': {
-                    "tune": "zerolatency",
-                },
-            }
-        else:
-            params = {}
-
-        stream = encoder.add_video(
-            height=video.height,
-            width=video.width,
-            frame_rate=video.fps / gap,
-            **params
-        )
-        encoder.open_file('output.mp4')
-
+        all_frames: list[ProcessedFrame] = []
         for frame in video.frames:
+            all_frames.append(frame)
             window.append(frame)
             avg_window_conf += frame.prediction.peak_conf / window_size
 
@@ -254,15 +230,36 @@ class Model:
 
             avg_window_conf -= left_frame.prediction.peak_conf / window_size
 
-            if is_recording:
+        encoder = Encoder()
+        if self.__device == 'cpu':
+            params = {
+                'codec': 'libx264',
+                'pixel_format': "yuv420p",
+                'crf': 30,
+                'preset': 'ultrafast',
+                'extra_options': {
+                    "tune": "zerolatency",
+                },
+            }
+        else:
+            params = {}
+
+        stream = encoder.add_video(
+            height=video.height,
+            width=video.width,
+            frame_rate=video.fps / gap,
+            **params
+        )
+        encoder.open_file(output_path)
+
+        for interval in intervals:
+            start = (interval.start.frames - 1) // gap
+            end = (interval.end.frames - 1) // gap
+
+            for i in range(start, end + 1):
+                frame = all_frames[i]
                 img = frame.prediction.img
-                final_img = draw_text(
-                    img,
-                    str(frame.timecode),
-                    (30, 30),
-                    (255, 255, 255),
-                    size=40
-                )
+                final_img = blit_text(img, str(frame.timecode), self.glyph_atlas, 30, video.height - 80)
                 stream.add_frames(final_img.unsqueeze(0))
 
         encoder.close()
