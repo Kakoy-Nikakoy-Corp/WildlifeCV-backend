@@ -1,30 +1,9 @@
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
-from typing import TypedDict, Protocol
+from typing import TypedDict, Protocol, NamedTuple
 
 from timecode import Timecode
-
-
-class RecognitionStatus(str, Enum):
-    """
-    Статус ответа модели.
-
-    OK: Видео обработано по стандартному сценарию.
-    SIZE_LIMIT: Файл, переданное в эндпоинт, превышает максимальный размер.
-    DOWNLOAD_ERROR: Произошла ошибка во время загрузки файла
-    """
-    OK = 'OK'
-    SIZE_LIMIT = "SIZE_LIMIT"
-    DOWNLOAD_ERROR = "DOWNLOAD_ERROR"
-
-
-class VideoResponse(TypedDict):
-    """Формат ответа эндпоинта."""
-    status: RecognitionStatus
-    detail: str
-    timestrings: list[str] | None  # 'HH:MM:SS - HH:MM:SS', '...'
-    path: Path | None
 
 
 @dataclass(slots=True)
@@ -38,6 +17,55 @@ class VideoRecognitionOutput:
     """
     timestrings: list[str]
     path: Path
+
+
+class RecognitionStatus(StrEnum):
+    """
+    Статус ответа эндпоинта.
+
+    OK: Эндпоинт отработал по стандартному сценарию.
+    SIZE_LIMIT: Файл, переданное в эндпоинт, превышает максимальный размер.
+    DOWNLOAD_ERROR: Произошла ошибка во время загрузки файла
+    """
+    OK = 'OK'
+    SIZE_LIMIT = "SIZE_LIMIT"
+    DOWNLOAD_ERROR = "DOWNLOAD_ERROR"
+
+
+class VideoSuccessResponse(TypedDict):
+    """
+    Успешный ответ эндпоинта обработки видео.
+
+    Parameters:
+        status: Значение RecognitionStatus
+        data: Результат от модели
+    """
+    status: RecognitionStatus
+    data: VideoRecognitionOutput
+
+
+class ImageSuccessResponse(TypedDict):
+    """
+    Успешный ответ эндпоинта обработки изображений.
+
+    Parameters:
+        status: Значение RecognitionStatus
+        path: Путь к обработанному изображению
+    """
+    status: RecognitionStatus
+    path: Path
+
+
+class DownloadErrorResponse(TypedDict):
+    """
+    Формат ответа эндпоинта, если на нем выброшена ошибка.
+
+    Parameters:
+        status: Значения RecognitionStatus
+        detail: Комментарий к ошибке
+    """
+    status: RecognitionStatus
+    detail: str
 
 
 @dataclass(slots=True, frozen=True)

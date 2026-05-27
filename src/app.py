@@ -1,16 +1,15 @@
 from pathlib import Path
 from typing import Final
-from tempfile import NamedTemporaryFile
-import uuid
 
 from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import puremagic
 
 from src.model import Model
-from src.paths import get_videos_dpath
-from src.types import DownloadStatus, VideoRecognitionResponse, VideoResponse, RecognitionStatus
-from src.utils import download_file
+from src.paths import get_videos_dpath, get_images_dpath, get_archives_dpath
+from src.types import RecognitionStatus, DownloadErrorResponse
+from src.types import VideoSuccessResponse, ImageSuccessResponse
+from src.utils import download_file, get_uuid4
 
 
 app = FastAPI()
@@ -40,7 +39,7 @@ ALLOWED_ARCHIVE_MIMES = {'application/zip', 'application/x-7z-compressed'}
 
 
 @app.post("/recognise/video/")
-async def recognise_video(video: UploadFile) -> VideoResponse:
+async def recognise_video(video: UploadFile) -> VideoSuccessResponse | DownloadErrorResponse:
     """
     Запускает пайплайн на видеофайле.
 
@@ -64,27 +63,34 @@ async def recognise_video(video: UploadFile) -> VideoResponse:
     else:
         ext = video_name.suffix
 
-    video_path = get_videos_dpath() / f"{uuid.uuid4()}{ext}"
-
-    # Загружаем видеофайл
+    video_path = get_videos_dpath() / f"{get_uuid4()}{ext}"
+    # Загружаем файл
     download_status = await download_file(video, video_path)
     match download_status:
-        case DownloadStatus.ERROR:
-            return VideoRecognitionResponse(status='')
+        case RecognitionStatus.DOWNLOAD_ERROR as error:
+            return VideoErrorResponse(
+                status=error,
+                detail="Во время загрузки произошла ошибка :("
+            )
 
+        case RecognitionStatus.SIZE_LIMIT as error:
+            max_size_mebibytes = MAX_SIZE_BYTES / 1024 / 1024
+            return VideoErrorResponse(
+                status=error,
+                detail=f"Файл слишком большой, лимит - {(max_size_mebibytes):.2f}"
+            )
 
-        # Предикты + rolling window
-        video_path = Path(video_file.name)
-        timestrings = model.detect_video_timeintervals(video_path)
-    return VideoResponse(
-        status=RecognitionStatus.SUCCESS,
-        timestrings=timestrings,
-        path=Path()  # wait for model class update
-    )
+        case RecognitionStatus.OK as success:
+            # Предикты + rolling window
+            model_response = model.detect_video_timeintervals(video_path)
+            return VideoSuccessResponse(
+                status=success,
+                data=model_response
+            )
 
 
 @app.post("/recognise/image/")
-async def recognise_image(image: UploadFile):
+async def recognise_image(image: UploadFile) -> ImageSuccessResponse | ImageErrorResponse:
     """
     Запускает пайплайн на изображении.
 
@@ -101,20 +107,34 @@ async def recognise_image(image: UploadFile):
         raise HTTPException(status_code=400, detail='Поддерживаются только видео, фото и архивы с фото!')
 
     # Получаем суффикс из файла
-    file_name = Path(image.filename)
-    if file_name.suffix is None:
-        ext = puremagic.from_file(file_name)
+    image_name = Path(image.filename)
+    if not image_name.suffix:
+        ext = puremagic.from_file(image_name)
     else:
-        ext = file_name.suffix
+        ext = image_name.suffix
 
-    # Загружаем видеофайл чанками
-    with NamedTemporaryFile('wb', suffix=ext) as image_file:
+    image_path = get_images_dpath() / f"{get_uuid4()}{ext}"
+    # Загружаем файл
+    download_status = await download_file(image, image_path)
+    match download_status:
+        case RecognitionStatus.DOWNLOAD_ERROR as error:
+            return DownloadErrorResponse(
+                status=error,
+                detail="Во время загрузки файла произошла ошибка :("
+            )
 
-        # Предикты + rolling window
-        video_path = Path(image_file.name)
-        timestrings = model.find_intervals(video_path, threshold=0.5, smoothing_interval=3, gap=10)
-    return {
-        'status': RecognitionStatus.SUCCESS,
-        'timestrings': timestrings,
-        'path': Path()  # wait for model class update
-    }
+        case RecognitionStatus.SIZE_LIMIT as error:
+            max_size_mebibytes = MAX_SIZE_BYTES / 1024 / 1024
+            return DownloadErrorResponse(
+                status=error,
+                detail=f"Файл слишком большой, лимит - {(max_size_mebibytes):.2f}"
+            )
+
+        case RecognitionStatus.OK as success:
+            bboxed_image_path = model.find_intervals(
+                image_path, threshold=0.5, smoothing_interval=3, gap=10
+            )
+            return ImageSuccessResponse(
+                status=success,
+                path=bboxed_image_path
+            )

@@ -1,7 +1,9 @@
-from typing import BinaryIO
+from pathlib import Path
+from typing import Any, Coroutine
+from uuid import uuid4
 
-from fastapi import UploadFile
 import torch
+from fastapi import UploadFile
 import torchvision.transforms.v2.functional as f
 from torchvision.transforms import InterpolationMode
 
@@ -48,6 +50,11 @@ def preprocess(img: torch.Tensor, target_size: int = 640) -> torch.Tensor:
     return letterboxed / 255.0
 
 
+def get_uuid4() -> str:
+    """Возвращает UUID в формате строки."""
+    return str(uuid4())
+
+
 async def download_file(
     file: UploadFile,
     save_path: Path,
@@ -70,11 +77,12 @@ async def download_file(
                 total_size += len(chunk)
                 # Проверка есть на фронтенде, бэкенд ее дублирует
                 if total_size > max_size:
-                    # 'Файл слишком большой, лимит - 500 MB'
                     return DownloadStatus.SIZE_LIMIT
                 media_file.write(chunk)
         return DownloadStatus.OK
 
     except Exception:
-        # "Ошибка при сохранении файла"
+        # Удаляем файл, если он частично загружен
+        if save_path.exists():
+            save_path.unlink()
         return DownloadStatus.ERROR
