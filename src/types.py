@@ -2,7 +2,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import TypedDict, Protocol, NamedTuple
+from typing import TypedDict, Protocol
 
 import torch
 from timecode import Timecode
@@ -56,6 +56,18 @@ class ImageSuccessResponse(TypedDict):
     """
     status: RecognitionStatus
     path: Path
+
+
+class MultiImageSuccessResponse(TypedDict):
+    """
+    Успешный ответ эндпоинта обработки архивов с изображениями.
+    """
+    status: RecognitionStatus
+    archive_link: str
+    image_1: str
+    image_2: str
+    image_3: str
+    image_4: str
 
 
 class DownloadErrorResponse(TypedDict):
@@ -116,6 +128,7 @@ class ModelProtocol(Protocol):
     def detect_video_timeintervals(
         self,
         video_path: Path,
+        output_path: Path,
         window_coef: float,
         threshold: float,
         smoothing_interval: float,

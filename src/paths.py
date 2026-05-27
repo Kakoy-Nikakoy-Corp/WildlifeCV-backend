@@ -3,7 +3,6 @@ from pathlib import Path
 
 from torch import cuda
 
-
 def fixdir(func: Callable[[], Path]):
     """Создает директорию, если её не существует."""
     def wrapper():
@@ -22,27 +21,27 @@ def get_project_root():
 
 
 @fixdir
-def get_uploads_dpath() -> Path:
-    """Возвращает путь к директории с файлами, загруженными пользователями."""
-    return get_project_root() / 'uploads'
+def get_output_dpath() -> Path:
+    """Возвращает путь к директории с файлами, обработанными YOLO."""
+    return get_project_root() / 'output'
 
 
 @fixdir
-def get_videos_dpath() -> Path:
-    """Возвращает путь к директории с загруженными видео."""
-    return get_uploads_dpath() / 'videos'
+def get_output_videos_dpath() -> Path:
+    """Возвращает путь к директории с обработанными видео."""
+    return get_output_dpath() / 'videos'
 
 
 @fixdir
-def get_images_dpath() -> Path:
-    """Возвращает путь к директории с загруженными фото."""
-    return get_uploads_dpath() / 'images'
+def get_output_images_dpath() -> Path:
+    """Возвращает путь к директории с обработанными фото."""
+    return get_output_dpath() / 'images'
 
 
 @fixdir
-def get_archives_dpath() -> Path:
-    """Возвращает путь к директории с загруженными архивами."""
-    return get_uploads_dpath() / 'archives'
+def get_output_archives_dpath() -> Path:
+    """Возвращает путь к директории с обработанными архивами."""
+    return get_output_dpath() / 'archives'
 
 
 def get_tests_dpath() -> Path:

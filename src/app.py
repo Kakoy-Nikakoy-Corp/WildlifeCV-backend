@@ -7,10 +7,10 @@ from fastapi.staticfiles import StaticFiles
 import puremagic
 
 from src.model import Model
-from src.paths import get_videos_dpath, get_images_dpath, get_archives_dpath
+from src.paths import get_output_dpath
 from src.types import RecognitionStatus, DownloadErrorResponse
 from src.types import VideoSuccessResponse, ImageSuccessResponse
-from src.utils import download_file, get_uuid4
+from src.utils import download_file
 
 
 app = FastAPI()
@@ -28,18 +28,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
-app.mount(
-    "/uploads",
-    StaticFiles(directory=))
+app.mount("/output", StaticFiles(directory=get_output_dpath()), "outputs")
 
 MAX_SIZE_BYTES: Final = 500*1024*1024
 CHUNK_SIZE: Final = 8*1024*1024  # 8 мебибайт
 ALLOWED_VIDEO_MIMES = {'video/mp4', 'video/x-matroska', 'video/matroska'}
 ALLOWED_IMAGE_MIMES = {'image/jpeg', 'image/png'}
 ALLOWED_ARCHIVE_MIMES = {'application/zip', 'application/x-7z-compressed'}
-
-# Есть middlware, который шарит директорию как роуты в бэке
-@app.get("/video/")
 
 
 @app.post("/recognise/video/")
@@ -58,7 +53,7 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | DownloadE
         raise HTTPException(422, detail='Сервис не обрабатывает файл без имени :(')
 
     if video.content_type not in ALLOWED_VIDEO_MIMES:
-        raise HTTPException(status_code=400, detail='Поддерживаются только видео, фото и архивы с фото!')
+        raise HTTPException(400, detail='Поддерживаются только видео, фото и архивы с фото')
 
     # Получаем расширение файла
     video_name = Path(video.filename)
@@ -67,9 +62,8 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | DownloadE
     else:
         ext = video_name.suffix
 
-    video_path = get_videos_dpath() / f"{get_uuid4()}{ext}"
     # Загружаем файл
-    download_status = await download_file(video, video_path)
+    download_status = await download_file(video, ext)
     match download_status:
         case RecognitionStatus.DOWNLOAD_ERROR as error:
             return DownloadErrorResponse(
@@ -117,9 +111,8 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | DownloadE
     else:
         ext = image_name.suffix
 
-    image_path = get_images_dpath() / f"{get_uuid4()}{ext}"
     # Загружаем файл
-    download_status = await download_file(image, image_path)
+    download_status = await download_file(image, ext)
     match download_status:
         case RecognitionStatus.DOWNLOAD_ERROR as error:
             return DownloadErrorResponse(

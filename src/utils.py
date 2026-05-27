@@ -1,4 +1,5 @@
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any, Coroutine
 from uuid import uuid4
 
@@ -29,7 +30,7 @@ def calculate_letterbox_params(orig_shape: torch.Size | tuple[int, int], target_
 
     return LetterboxParams(r, new_w, new_h, pad_w, pad_h)
 
-from src.types import DownloadStatus
+from src.types import RecognitionStatus
 
 
 def preprocess(img: torch.Tensor, target_size: int = 640) -> torch.Tensor:
@@ -72,35 +73,36 @@ def get_uuid4() -> str:
 
 async def download_file(
     file: UploadFile,
-    save_path: Path,
+    file_extension: str,
     chunk_size: int = 8*1024*1024,
     max_size: int = 500*1024*1024
-) -> DownloadStatus:
+) -> RecognitionStatus:
     """
     Загружает файл и возвращает код загрузки.
 
     Args:
         file: Файл от фронтенда, который нужно сохранить
-        save_path: Путь до файла, в который будут записаны данные
+        extension: Расширение файла
         chunk_size: Размер чанка загрузки (в байтах)
         max_size: Максимальный размер файла (в байтах)
     """
     total_size = 0
     try:
-        with open(save_path, 'wb') as media_file:
+        with NamedTemporaryFile(suffix=file_extension) as media_file:
             while chunk := await file.read(chunk_size):
                 total_size += len(chunk)
                 # Проверка есть на фронтенде, бэкенд ее дублирует
                 if total_size > max_size:
-                    return DownloadStatus.SIZE_LIMIT
+                    return RecognitionStatus.SIZE_LIMIT
                 media_file.write(chunk)
-        return DownloadStatus.OK
+        return RecognitionStatus.OK
 
     except Exception:
-        # Удаляем файл, если он частично загружен
-        if save_path.exists():
-            save_path.unlink()
-        return DownloadStatus.ERROR
+        # Проверять существование частично загруженного файла не нужно,
+        # контекстный менеджер корреткно закрывается
+        return RecognitionStatus.DOWNLOAD_ERROR
+
+
 def rescale_bboxes(
         bboxes: torch.Tensor,
         orig_shape: torch.Size,
