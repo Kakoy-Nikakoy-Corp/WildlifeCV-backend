@@ -18,6 +18,7 @@ RUN pip install -e torchcodec --no-build-isolation
 
 COPY src/ src/
 COPY weights/ weights/
+COPY fonts/ fonts/
 
 EXPOSE 3001
 ENV IRBIS_DEBUG=0
