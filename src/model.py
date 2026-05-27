@@ -35,7 +35,7 @@ class Model:
         self.__model = YOLO(weights_path, verbose=self.__verbose, task='detect')
 
         # Set up the Glyph Atlas
-        self.glyph_atlas = make_glyph_atlas()
+        self.glyph_atlas = make_glyph_atlas(device=self.__device)
 
         logger.add('model_inf.log', level='INFO')
 
