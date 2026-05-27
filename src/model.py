@@ -242,7 +242,16 @@ class Model:
                 },
             }
         else:
-            params = {}
+            params = {
+                'codec': 'h264_nvenc',
+                'device': 'cuda',
+                'crf': 30,
+                'preset': 'p1',
+                'extra_options': {
+                    "tune": 'ull',
+                    "qp": 30
+                }
+            }
 
         stream = encoder.add_video(
             height=video.height,
