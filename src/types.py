@@ -18,7 +18,7 @@ class VideoRecognitionOutput:
         path: Путь до видео с bbox'ами
     """
     timestrings: list[str]
-    path: Path
+    path: str
 
 
 class RecognitionStatus(StrEnum):

@@ -9,7 +9,7 @@ import torchvision.transforms.v2.functional as f
 from torchvision.transforms import InterpolationMode
 from PIL import ImageDraw, ImageFont, Image
 
-from src.types import LetterboxParams
+from src.types import LetterboxParams, RecognitionStatus
 
 CHARS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', ':', ';']
 
@@ -29,8 +29,6 @@ def calculate_letterbox_params(orig_shape: torch.Size | tuple[int, int], target_
     pad_w = (target_size - new_w) // 2
 
     return LetterboxParams(r, new_w, new_h, pad_w, pad_h)
-
-from src.types import RecognitionStatus
 
 
 def preprocess(img: torch.Tensor, target_size: int = 640) -> torch.Tensor:

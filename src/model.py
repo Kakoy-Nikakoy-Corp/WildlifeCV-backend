@@ -152,7 +152,7 @@ class Model:
 
         return ProcessedVideo(fps, width, height, total_frames, frames_iterator())
 
-    def find_intervals(
+    def detect_video_timeintervals(
             self,
             video_path: Path,
             output_path: Path,
