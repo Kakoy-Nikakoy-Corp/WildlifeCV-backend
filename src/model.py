@@ -248,7 +248,7 @@ class Model:
                 'crf': 30,
                 'preset': 'p1',
                 'extra_options': {
-                    "tune": 'ull',
+                    "tune": 3,
                     "qp": 30
                 }
             }
