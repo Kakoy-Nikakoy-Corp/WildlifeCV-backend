@@ -9,14 +9,14 @@ import torch
 from loguru import logger
 from timecode import Timecode
 from torchcodec.decoders import VideoDecoder
+from torchcodec.encoders import Encoder
+from torchvision.ops import nms
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
 from src.paths import get_yolo_weights_path
-from src.types import FrameResults, TimeInterval
-from src.utils import preprocess
-
-type BBoxResults = tuple[list[float], list]
+from src.types import ProcessedFrame, TimeInterval, ModelPrediction, ProcessedVideo
+from src.utils import preprocess, rescale_bboxes, make_glyph_atlas, blit_text, draw_bboxes
 
 pr = cProfile.Profile()  # Virtually no performance impact until enabled
 
@@ -34,10 +34,12 @@ class Model:
         weights_path: Path = get_yolo_weights_path()
         self.__model = YOLO(weights_path, verbose=self.__verbose, task='detect')
 
+        # Set up the Glyph Atlas
+        self.glyph_atlas = make_glyph_atlas(device=self.__device)
+
         logger.add('model_inf.log', level='INFO')
 
-    @staticmethod
-    def __collect_results(results: Results) -> BBoxResults:
+    def __postprocess(self, results: Results, original_image: torch.Tensor) -> ModelPrediction:
         """
         Obtain all necessary fields from a `ultralytics.engine.results.Results` object.
 
@@ -45,20 +47,35 @@ class Model:
             results: an object containing single prediction results.
 
         Returns:
-            A single BBoxResults-type object.
+            A single ModelPrediction object.
         """
         boxes = results.boxes  # Contains data for 'detection' task models
 
-        # Model confidences must not be empty to avoid sorting issues
-        confs: list[float] = boxes.conf.tolist()
-        if not confs:
-            confs.append(0.)
+        conf: torch.Tensor = boxes.conf
+        bboxes: torch.Tensor = boxes.xyxy
 
-        bbox_coords: list[list[float] | None] = boxes.xyxy.tolist()
+        if conf.numel() == 0:
+            return ModelPrediction(0.0, original_image)
 
-        return confs, bbox_coords
+        # Non-maximum suppression
+        idx = nms(bboxes, conf, 0.45)
+        conf, bboxes = conf[idx], bboxes[idx]
 
-    def __make_prediction(self, frames: torch.Tensor, single: bool = False) -> Iterator[BBoxResults] | BBoxResults:
+        # Rescaling
+        orig_shape = original_image.shape[-2:]
+        scaled_bboxes = rescale_bboxes(bboxes, orig_shape)
+
+        peak_conf = float(conf.max())
+
+        labels = list(map(lambda x: str(round(x, 2)), conf.tolist()))
+        # brown, seagreen, orange, darkviolet
+        colors = [(165, 42, 42), (46, 139, 87), (255, 165, 0), (148, 0, 211)]
+        label_colors = [(230, 230, 250)]  # lavender
+        img = draw_bboxes(original_image, scaled_bboxes, labels, self.glyph_atlas, colors, label_colors, 5)
+
+        return ModelPrediction(peak_conf, img)
+
+    def __make_prediction(self, frames: torch.Tensor, single: bool = False) -> Iterator[ModelPrediction] | ModelPrediction:
         """
         Make a prediction on a single (C, H, W) image or a batch (B, C, H, W) of images.
 
@@ -67,7 +84,7 @@ class Model:
             single: whether a prediction should be singular or not. This method behaves as an iterator for the latter case.
 
         Returns:
-            A single BBoxResults-type object or a sequence of them via an Iterator.
+            A single ModelPrediction or a sequence of them via an Iterator.
         """
         # Letterbox and normalize tensors
         preprocessed_frames: torch.Tensor = preprocess(frames)
@@ -77,16 +94,16 @@ class Model:
 
         # Return a single prediction
         if single:
-            return self.__collect_results(results_list[0])
+            return self.__postprocess(results_list[0], frames[0])
 
         # Generate results one by one in case of batch prediction
-        def results_iterator() -> Iterator[BBoxResults]:
-            for results in results_list:
-                yield self.__collect_results(results)
+        def results_iterator() -> Iterator[ModelPrediction]:
+            for i, results in enumerate(results_list):
+                yield self.__postprocess(results, frames[i])
 
         return results_iterator()
 
-    def __process_video(self, video_path: Path, gap: int = 2, batch_size: int = 16) -> tuple[int, float, Iterator[FrameResults]]:
+    def __process_video(self, video_path: Path, gap: int = 2, batch_size: int = 16) -> ProcessedVideo:
         """
         Given path to a particular video, makes a series of predictions on its frames.
 
@@ -99,24 +116,27 @@ class Model:
             batch_size: Количество кадров внутри одного пакета.
 
         Returns:
-            Total video frames, frames per second and an iterator over FrameResults.
+            Total video frames, frames per second and an iterator over ProcessedFrame objects.
         """
         # Arbitrary thread count gives substantial performance boosts only on CPU
         threads = 1 if self.__device == 'cuda' else 0
 
         # We are intentionally NOT applying any on-decode transformations to retain original frames for further encoding
-        video = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=threads, device=self.__device)
+        decoder = VideoDecoder(video_path, seek_mode="approximate", num_ffmpeg_threads=threads, device=self.__device)
 
-        fps = video.metadata.average_fps
-        total_frames = video.metadata.num_frames
-        logger.info(f"FPS: {fps:.2f}, Total frames: {total_frames}")
+        fps = decoder.metadata.average_fps
+        total_frames = decoder.metadata.num_frames
+        height = decoder.metadata.height
+        width = decoder.metadata.width
 
-        def frame_results_iterator() -> Iterator[FrameResults]:
+        logger.info(f"FPS: {fps:.2f}, Total frames: {total_frames}, Shape: ({width}, {height})")
+
+        def frames_iterator() -> Iterator[ProcessedFrame]:
             batch_length = gap * batch_size  # Length is measured in actual frames
 
             # Iterate over all possible batch starting points
             for offset in range(0, total_frames, batch_length):
-                frames = video.get_frames_in_range(offset, offset + batch_length, gap).data
+                frames = decoder.get_frames_in_range(offset, offset + batch_length, gap).data
 
                 if self.__verbose:
                     logger.info(f"\nBatch {offset // batch_length}/{total_frames // batch_length}: {len(frames)} frames")
@@ -124,17 +144,18 @@ class Model:
                 frame_number = offset + 1 # May equal 1...total_frames
 
                 # Every batch yields 'batch_size' results with an interval of 'gap' frames between them
-                for confs, bbox_coords in self.__make_prediction(frames):
+                for prediction in self.__make_prediction(frames):
                     timecode = Timecode(fps, frames=frame_number)
 
-                    yield FrameResults(frame_number, timecode, confs, bbox_coords)
+                    yield ProcessedFrame(frame_number, timecode, prediction)
                     frame_number += gap
 
-        return total_frames, fps, frame_results_iterator()
+        return ProcessedVideo(fps, width, height, total_frames, frames_iterator())
 
     def find_intervals(
             self,
             video_path: Path,
+            output_path: Path,
             window_coef: float = 1.5,
             threshold: float = 0.4,
             smoothing_interval: float = 2,
@@ -166,26 +187,29 @@ class Model:
         if self.__use_profiler:
             pr.enable()
 
-        total_frames, fps, frame_results = self.__process_video(video_path, gap, batch_size)
-        window_size = int(fps * window_coef / gap)
-        smoothing_tc = Timecode(fps, start_seconds=smoothing_interval)
+        video = self.__process_video(video_path, gap, batch_size)
+        window_size = int(video.fps * window_coef / gap)
+        smoothing_tc = Timecode(video.fps, start_seconds=smoothing_interval)
 
         # Алгоритм Rolling Window для сглаживания и уточнения предсказаний модели на временных интервалах
         avg_window_conf = 0.
         is_recording = False
         last_interval: TimeInterval | None = None
 
-        window: deque[FrameResults] = deque()
+        window: deque[ProcessedFrame] = deque()
         intervals: list[TimeInterval] = []
-        for frame in frame_results:
+
+        all_frames: list[ProcessedFrame] = []
+        for frame in video.frames:
+            all_frames.append(frame)
             window.append(frame)
-            avg_window_conf += max(frame.confs) / window_size
+            avg_window_conf += frame.prediction.peak_conf / window_size
 
             # deque len -> O(1)
             if len(window) < window_size:
                 continue
 
-            left_frame: FrameResults = window.popleft()
+            left_frame: ProcessedFrame = window.popleft()
 
             # Если превысили порог обнаружения и запись интервала не идёт, начинаем его отслеживать
             if avg_window_conf >= threshold and not is_recording:
@@ -200,11 +224,54 @@ class Model:
                     intervals.append(last_interval)
 
             # Если ведём запись и упали ниже порога ЛИБО дошли до конца видео, заканчиваем интервал
-            elif is_recording and (avg_window_conf < threshold or frame.number + gap >= total_frames):
+            elif is_recording and (avg_window_conf < threshold or frame.number + gap >= video.frame_count):
                 is_recording = False
                 last_interval.end = frame.timecode
 
-            avg_window_conf -= max(left_frame.confs) / window_size
+            avg_window_conf -= left_frame.prediction.peak_conf / window_size
+
+        encoder = Encoder()
+        if self.__device == 'cpu':
+            params = {
+                'codec': 'libx264',
+                'pixel_format': "yuv420p",
+                'crf': 30,
+                'preset': 'ultrafast',
+                'extra_options': {
+                    "tune": "zerolatency",
+                },
+            }
+        else:
+            params = {
+                'codec': 'h264_nvenc',
+                'device': 'cuda',
+                'crf': 30,
+                'preset': 'p1',
+                'extra_options': {
+                    "tune": 3,
+                    "qp": 30
+                }
+            }
+
+        stream = encoder.add_video(
+            height=video.height,
+            width=video.width,
+            frame_rate=video.fps / gap,
+            **params
+        )
+        encoder.open_file(output_path)
+
+        for interval in intervals:
+            start = (interval.start.frames - 1) // gap
+            end = (interval.end.frames - 1) // gap
+
+            for i in range(start, end + 1):
+                frame = all_frames[i]
+                img = frame.prediction.img
+                final_img = blit_text(img, str(frame.timecode), self.glyph_atlas, 30, video.height - 80)
+                stream.add_frames(final_img.unsqueeze(0))
+
+        encoder.close()
 
         if self.__use_profiler:
             pr.disable()
