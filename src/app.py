@@ -3,6 +3,7 @@ from typing import Final
 
 from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import puremagic
 
 from src.model import Model
@@ -27,6 +28,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+app.mount(
+    "/uploads",
+    StaticFiles(directory=))
 
 MAX_SIZE_BYTES: Final = 500*1024*1024
 CHUNK_SIZE: Final = 8*1024*1024  # 8 мебибайт
@@ -68,14 +72,14 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | DownloadE
     download_status = await download_file(video, video_path)
     match download_status:
         case RecognitionStatus.DOWNLOAD_ERROR as error:
-            return VideoErrorResponse(
+            return DownloadErrorResponse(
                 status=error,
                 detail="Во время загрузки произошла ошибка :("
             )
 
         case RecognitionStatus.SIZE_LIMIT as error:
             max_size_mebibytes = MAX_SIZE_BYTES / 1024 / 1024
-            return VideoErrorResponse(
+            return DownloadErrorResponse(
                 status=error,
                 detail=f"Файл слишком большой, лимит - {(max_size_mebibytes):.2f}"
             )
@@ -90,7 +94,7 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | DownloadE
 
 
 @app.post("/recognise/image/")
-async def recognise_image(image: UploadFile) -> ImageSuccessResponse | ImageErrorResponse:
+async def recognise_image(image: UploadFile) -> ImageSuccessResponse | DownloadErrorResponse:
     """
     Запускает пайплайн на изображении.
 

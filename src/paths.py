@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from pathlib import Path
 
-import torch
+from torch import cuda
 
 
 def fixdir(func: Callable[[], Path]):
@@ -63,7 +63,7 @@ def get_model_weights_dpath() -> Path:
 
 def get_yolo_weights_path() -> Path:
     """Возвращает путь к актуальным весам YOLO26."""
-    if torch.cuda.is_available():
+    if cuda.is_available():
         return get_model_weights_dpath() / 'best.engine'
 
     return get_model_weights_dpath() / 'best.onnx'
