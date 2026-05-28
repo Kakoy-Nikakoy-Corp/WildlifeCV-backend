@@ -46,7 +46,7 @@ def preprocess(img: torch.Tensor, target_size: int = 640) -> torch.Tensor:
         img = img.unsqueeze(0)
 
     b, c, h, w = img.shape
-    p: LetterboxParams = calculate_letterbox_params((h, w))
+    p: LetterboxParams = calculate_letterbox_params((h, w), target_size)
 
     # Resize
     resized = f.resize(img, size=[p.new_h, p.new_w], antialias=False, interpolation=InterpolationMode.BILINEAR)
