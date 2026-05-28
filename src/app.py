@@ -83,7 +83,7 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | DownloadE
             download_status = RecognitionStatus.OK
             # Предикты + rolling window
             video_path = Path(media_file.name)
-            timestrings = model.detect_video_timeintervals(video_path, Path('./output/output.mp4'), threshold=0.5, smoothing_interval=3, gap=10)
+            timestrings = model.detect_video_timeintervals(video_path, Path('./output/output.mp4'), threshold=0.5, smoothing_interval=3, gap=10, batch_size=32)
             return VideoSuccessResponse(
                 status=download_status,
                 data=VideoRecognitionOutput(
