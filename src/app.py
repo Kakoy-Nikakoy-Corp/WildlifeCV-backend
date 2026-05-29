@@ -12,9 +12,10 @@ import puremagic
 
 from src.model import Model
 from src.paths import get_output_dpath, get_output_videos_dpath, get_output_images_dpath, get_output_archives_dpath, get_project_root
-from src.types import RecognitionStatus, DownloadErrorResponse
+from src.types import RecognitionStatus, LoadingErrorResponse
 from src.types import VideoSuccessResponse, VideoRecognitionOutput
 from src.types import ImageSuccessResponse, MultiImageSuccessResponse
+from src.utils import download_file
 
 app = FastAPI()
 model = Model()
@@ -42,7 +43,7 @@ ALLOWED_ARCHIVE_MIMES = {'application/zip', 'application/x-7z-compressed'}
 
 
 @app.post("/recognise/video/")
-async def recognise_video(video: UploadFile) -> VideoSuccessResponse | DownloadErrorResponse:
+async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingErrorResponse:
     """
     Запускает пайплайн на видеофайле.
 
@@ -66,54 +67,49 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | DownloadE
     else:
         ext = video_name.suffix
 
-    total_size = 0
-    try:
-        with NamedTemporaryFile(suffix=ext) as media_file:
-            while chunk := await video.read(CHUNK_SIZE):
-                total_size += len(chunk)
+    with NamedTemporaryFile(suffix=ext) as video_file:
+        download_status = await download_file(video_file, video, ext)
 
-                # Проверка есть на фронтенде, бэкенд ее дублирует
-                if total_size / 1024 / 1024 > MAX_SIZE_MIB:
-                    return DownloadErrorResponse(
-                        status=RecognitionStatus.SIZE_LIMIT,
-                        detail=f"Файл слишком большой, лимит - {MAX_SIZE_MIB} MiB"
-                    )
-
-                media_file.write(chunk)
-
-            # Собираем путь для сохранения видео от модели и вызываем модель
-            output_name = f'{uuid4()}.mp4'
-            output_path = get_output_videos_dpath() / output_name
-            video_path = Path(media_file.name)
-            timestrings = model.detect_video_intervals(
-                video_path, output_path,
-                window_threshold=0.5,
-                smoothing_interval=3,
-                gap=10,
-                batch_size=32
-            )
-
-            return VideoSuccessResponse(
-                status=RecognitionStatus.IRBIS_FOUND,
-                data=VideoRecognitionOutput(
-                    timestrings=timestrings,
-                    link=f"/output/video/{output_name}"
+        match download_status:
+            case RecognitionStatus.DOWNLOAD_ERROR as error:
+                return LoadingErrorResponse(
+                    status=error,
+                    detail="Во время загрузки файла произошла ошибка :("
                 )
-            )
 
-    except Exception as e:
-        logger.opt(exception=True).error(e)
+            case RecognitionStatus.SIZE_LIMIT as error:
+                return LoadingErrorResponse(
+                    status=error,
+                    detail=f"Файл слишком большой, лимит - {MAX_SIZE_MIB:.2f}"
+                )
 
-        # Проверять существование частично загруженного файла не нужно,
-        # контекстный менеджер корректно закрывается
-        return DownloadErrorResponse(
-            status=RecognitionStatus.DOWNLOAD_ERROR,
-            detail="Во время загрузки произошла ошибка :("
-        )
+            case RecognitionStatus.IRBIS_FOUND as success:
+                # Собираем путь для сохранения видео от модели и вызываем модель
+                output_name = f'{uuid4()}.mp4'
+                output_path = get_output_videos_dpath() / output_name
+                video_path = Path(video_file.name)
+                timestrings = model.detect_video_intervals(
+                    video_path, output_path,
+                    window_threshold=0.5,
+                    smoothing_interval=3,
+                    gap=10,
+                    batch_size=32
+                )
+                relative_output_path = str(output_path.relative_to(get_project_root()))
+                bboxed_video_link = urljoin(ROOT_LINK, relative_output_path)
+                return VideoSuccessResponse(
+                    status=success,
+                    data=VideoRecognitionOutput(
+                        timestrings=timestrings,
+                        link=bboxed_video_link
+                    )
+                )
+
+
 
 
 @app.post("/recognise/image/")
-async def recognise_image(image: UploadFile) -> ImageSuccessResponse | DownloadErrorResponse:
+async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingErrorResponse:
     """
     Запускает пайплайн на изображении.
 
@@ -123,25 +119,7 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | DownloadE
     Returns:
         Словарь со статусом и таймкодами.
     """
-    async def download_file(io: IO[bytes], file: UploadFile, ext: str) -> RecognitionStatus:
-        total_size = 0
-        try:
-            while chunk := await file.read(CHUNK_SIZE):
-                total_size += len(chunk)
 
-                # Проверка есть на фронтенде, бэкенд ее дублирует
-                if total_size > MAX_SIZE_MIB:
-                    return RecognitionStatus.SIZE_LIMIT
-                io.write(chunk)
-            return RecognitionStatus.IRBIS_FOUND
-
-        except Exception as e:
-            # Проверять существование частично загруженного файла не нужно,
-            # контекстный менеджер корректно закрывается
-            logger.opt(exception=True).error(e)
-            return RecognitionStatus.DOWNLOAD_ERROR
-
-    # Что ты говорил про output
     if image.filename is None:
         raise HTTPException(422, detail='Сервис не обрабатывает файл без имени :(')
 
@@ -160,13 +138,13 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | DownloadE
         download_status = await download_file(image_file, image, ext)
         match download_status:
             case RecognitionStatus.DOWNLOAD_ERROR as error:
-                return DownloadErrorResponse(
+                return LoadingErrorResponse(
                     status=error,
                     detail="Во время загрузки файла произошла ошибка :("
                 )
 
             case RecognitionStatus.SIZE_LIMIT as error:
-                return DownloadErrorResponse(
+                return LoadingErrorResponse(
                     status=error,
                     detail=f"Файл слишком большой, лимит - {MAX_SIZE_MIB:.2f}"
                 )

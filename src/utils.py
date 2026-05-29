@@ -1,11 +1,16 @@
+from io import IO
 from uuid import uuid4
 
+from fastapi import UploadFile
+from loguru import logger
 import torch
 import torchvision.transforms.v2.functional as f
 from torchvision.transforms import InterpolationMode
 from PIL import ImageDraw, ImageFont, Image
 
-from src.types import LetterboxParams
+from src.app import CHUNK_SIZE, MAX_SIZE_MIB
+from src.types import LetterboxParams, RecognitionStatus
+
 
 CHARS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', ':', ';']
 
@@ -13,6 +18,33 @@ CHARS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', ':', ';']
 def get_uuid4() -> str:
     """Возвращает уникальный идентификатор."""
     return str(uuid4())
+
+
+async def download_file(io: IO[bytes], file: UploadFile, ext: str) -> RecognitionStatus:
+    """
+    Загружает файл и возвращает статус загрузки.
+
+    Parameters:
+        io: Открытый файл (от open() или контекстного менеджера)
+        file: Файл от бэкенда
+        ext: Расширение файла
+    """
+    total_size = 0
+    try:
+        while chunk := await file.read(CHUNK_SIZE):
+            total_size += len(chunk)
+
+            # Проверка есть на фронтенде, бэкенд ее дублирует
+            if total_size > MAX_SIZE_MIB:
+                return RecognitionStatus.SIZE_LIMIT
+            io.write(chunk)
+        return RecognitionStatus.IRBIS_FOUND
+
+    except Exception as e:
+        # Проверять существование частично загруженного файла не нужно,
+        # контекстный менеджер корректно закрывается
+        logger.opt(exception=True).error(e)
+        return RecognitionStatus.DOWNLOAD_ERROR
 
 
 def calculate_letterbox_params(orig_shape: torch.Size | tuple[int, int], target_size: int = 640) -> LetterboxParams:

@@ -71,7 +71,7 @@ class MultiImageSuccessResponse(TypedDict):
     image_4: str
 
 
-class DownloadErrorResponse(TypedDict):
+class LoadingErrorResponse(TypedDict):
     """
     Формат ответа эндпоинта, если на нем выброшена ошибка.
 
