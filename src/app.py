@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Final, IO
+from typing import Final
 from uuid import uuid4
 from urllib.parse import urljoin
 from tempfile import NamedTemporaryFile
@@ -122,9 +122,6 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingEr
 
     Parameters:
         image (UploadFile): Изображение
-
-    Returns:
-        Словарь со статусом и таймкодами.
     """
 
     if image.filename is None:
