@@ -1,8 +1,7 @@
 from collections.abc import Callable
 from pathlib import Path
 
-import torch
-
+from torch import cuda
 
 def fixdir(func: Callable[[], Path]):
     """Создает директорию, если её не существует."""
@@ -22,27 +21,27 @@ def get_project_root():
 
 
 @fixdir
-def get_uploads_dpath() -> Path:
-    """Возвращает путь к директории с файлами, загруженными пользователями."""
-    return get_project_root() / 'uploads'
+def get_output_dpath() -> Path:
+    """Возвращает путь к директории с файлами, обработанными YOLO."""
+    return get_project_root() / 'output'
 
 
 @fixdir
-def get_videos_dpath() -> Path:
-    """Возвращает путь к директории с загруженными видео."""
-    return get_uploads_dpath() / 'videos'
+def get_output_videos_dpath() -> Path:
+    """Возвращает путь к директории с обработанными видео."""
+    return get_output_dpath() / 'videos'
 
 
 @fixdir
-def get_images_dpath() -> Path:
-    """Возвращает путь к директории с загруженными фото."""
-    return get_uploads_dpath() / 'images'
+def get_output_images_dpath() -> Path:
+    """Возвращает путь к директории с обработанными фото."""
+    return get_output_dpath() / 'images'
 
 
 @fixdir
-def get_archives_dpath() -> Path:
-    """Возвращает путь к директории с загруженными архивами."""
-    return get_uploads_dpath() / 'archives'
+def get_output_archives_dpath() -> Path:
+    """Возвращает путь к директории с обработанными архивами."""
+    return get_output_dpath() / 'archives'
 
 
 def get_tests_dpath() -> Path:
@@ -63,7 +62,7 @@ def get_model_weights_dpath() -> Path:
 
 def get_yolo_weights_path() -> Path:
     """Возвращает путь к актуальным весам YOLO26."""
-    if torch.cuda.is_available():
+    if cuda.is_available():
         return get_model_weights_dpath() / 'best.engine'
 
     return get_model_weights_dpath() / 'best.onnx'

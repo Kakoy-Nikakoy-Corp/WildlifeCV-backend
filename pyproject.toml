@@ -9,6 +9,7 @@ dependencies = [
     "loguru>=0.7.3",
     "numpy>=2.4.4",
     "pillow>=12.2.0",
+    "puremagic>=2.2.0",
     "pydantic>=2.13.4",
     "timecode>=1.5.1",
     "torchcodec>=0.13.0",
