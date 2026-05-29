@@ -1,4 +1,4 @@
-from io import IO
+from typing import IO
 from uuid import uuid4
 
 from fastapi import UploadFile
@@ -20,7 +20,7 @@ def get_uuid4() -> str:
     return str(uuid4())
 
 
-async def download_file(io: IO[bytes], file: UploadFile, ext: str) -> RecognitionStatus:
+async def download_file(io: IO[bytes], file: UploadFile) -> RecognitionStatus:
     """
     Загружает файл и возвращает статус загрузки.
 

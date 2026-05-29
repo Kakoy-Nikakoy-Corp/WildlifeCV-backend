@@ -69,7 +69,7 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingEr
         ext = video_name.suffix
 
     with NamedTemporaryFile(suffix=ext) as video_file:
-        download_status = await download_file(video_file, video, ext)
+        download_status = await download_file(video_file, video)
 
         match download_status:
             case RecognitionStatus.DOWNLOAD_ERROR as error:
@@ -139,7 +139,7 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingEr
 
     # Загружаем файл
     with NamedTemporaryFile('wb', suffix=ext) as image_file:
-        download_status = await download_file(image_file, image, ext)
+        download_status = await download_file(image_file, image)
         match download_status:
             case RecognitionStatus.DOWNLOAD_ERROR as error:
                 return LoadingErrorResponse(
