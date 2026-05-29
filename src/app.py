@@ -73,7 +73,7 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | DownloadE
                 total_size += len(chunk)
 
                 # Проверка есть на фронтенде, бэкенд ее дублирует
-                if total_size > MAX_SIZE_MIB:
+                if total_size / 1024 / 1024 > MAX_SIZE_MIB:
                     return DownloadErrorResponse(
                         status=RecognitionStatus.SIZE_LIMIT,
                         detail=f"Файл слишком большой, лимит - {MAX_SIZE_MIB} MiB"
