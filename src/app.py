@@ -37,7 +37,15 @@ app.mount("/output", StaticFiles(directory=get_output_dpath()), "outputs")
 ROOT_LINK: Final = 'https://api.irbis.wild1.net'
 ALLOWED_VIDEO_MIMES = {'video/mp4', 'video/x-matroska', 'video/matroska'}
 ALLOWED_IMAGE_MIMES = {'image/jpeg', 'image/png'}
-ALLOWED_ARCHIVE_MIMES = {'application/zip', 'application/x-7z-compressed'}
+ALLOWED_ARCHIVE_MIMES = {
+    'application/zip',
+    'application/x-zip-compressed',
+    'application/x-7z-compressed',
+    'application/x-rar-compressed',
+    'application/x-rar',
+    'application/rar',
+    'application/vnd.rar',
+}
 
 
 @app.post("/recognise/video/")
@@ -167,4 +175,25 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingEr
 
 @app.post("/recognise/multi-image")
 async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | LoadingErrorResponse:
+    """
+    Запускает пайплайн на архиве изображений.
+
+    Parameters:
+        image (UploadFile): Архив
+    """
+
+    if archive.filename is None:
+        raise HTTPException(422, detail='Сервис не обрабатывает файл без имени :(')
+
+    if archive.content_type not in ALLOWED_ARCHIVE_MIMES:
+        raise HTTPException(status_code=400, detail='Поддерживаются только видео, фото и архивы с фото!')
+
+    # Получаем суффикс из файла
+    archive_name = Path(archive.filename)
+    if not archive_name.suffix:
+        ext = puremagic.from_file(archive_name)
+    else:
+        ext = archive_name.suffix
+
+    # FIXME!!!
     ...
