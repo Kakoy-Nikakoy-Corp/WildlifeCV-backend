@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import torch
 import torchvision.transforms.v2.functional as f
 from torchvision.transforms import InterpolationMode
@@ -6,6 +8,11 @@ from PIL import ImageDraw, ImageFont, Image
 from src.types import LetterboxParams
 
 CHARS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', ':', ';']
+
+
+def get_uuid4() -> str:
+    """Возвращает уникальный идентификатор."""
+    return str(uuid4())
 
 
 def calculate_letterbox_params(orig_shape: torch.Size | tuple[int, int], target_size: int = 640) -> LetterboxParams:

@@ -1,6 +1,7 @@
 from pathlib import Path
-from typing import Final
+from typing import Final, IO
 from uuid import uuid4
+from urllib.parse import urljoin
 from tempfile import NamedTemporaryFile
 
 from fastapi import FastAPI, UploadFile, HTTPException
@@ -10,10 +11,10 @@ from loguru import logger
 import puremagic
 
 from src.model import Model
-from src.paths import get_output_dpath
+from src.paths import get_output_dpath, get_output_videos_dpath, get_output_images_dpath, get_output_archives_dpath, get_project_root
 from src.types import RecognitionStatus, DownloadErrorResponse
 from src.types import VideoSuccessResponse, VideoRecognitionOutput
-
+from src.types import ImageSuccessResponse, MultiImageSuccessResponse
 
 app = FastAPI()
 model = Model()
@@ -34,6 +35,7 @@ app.mount("/output", StaticFiles(directory=get_output_dpath()), "outputs")
 
 MAX_SIZE_MIB: Final = 500
 CHUNK_SIZE: Final = 8 * 1024 * 1024  # 8 мебибайт
+ROOT_LINK: Final = 'https://api.irbis.wild1.net'
 ALLOWED_VIDEO_MIMES = {'video/mp4', 'video/x-matroska', 'video/matroska'}
 ALLOWED_IMAGE_MIMES = {'image/jpeg', 'image/png'}
 ALLOWED_ARCHIVE_MIMES = {'application/zip', 'application/x-7z-compressed'}
@@ -79,16 +81,23 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | DownloadE
 
                 media_file.write(chunk)
 
-            # Предикты + rolling window
+            # Собираем путь для сохранения видео от модели и вызываем модель
+            output_name = f'{uuid4()}.mp4'
+            output_path = get_output_videos_dpath() / output_name
             video_path = Path(media_file.name)
-            output_path = f'output/{uuid4()}.mp4'
-            timestrings = model.detect_video_intervals(video_path, Path(output_path), threshold=0.5, smoothing_interval=3, gap=10, batch_size=32)
+            timestrings = model.detect_video_intervals(
+                video_path, output_path,
+                window_threshold=0.5,
+                smoothing_interval=3,
+                gap=10,
+                batch_size=32
+            )
 
             return VideoSuccessResponse(
-                status=RecognitionStatus.OK,
+                status=RecognitionStatus.IRBIS_FOUND,
                 data=VideoRecognitionOutput(
                     timestrings=timestrings,
-                    link='https://api.irbis.wild1.net/' + output_path
+                    link=f"/output/video/{output_name}"
                 )
             )
 
@@ -103,51 +112,74 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | DownloadE
         )
 
 
-# @app.post("/recognise/image/")
-# async def recognise_image(image: UploadFile) -> ImageSuccessResponse | DownloadErrorResponse:
-#     """
-#     Запускает пайплайн на изображении.
+@app.post("/recognise/image/")
+async def recognise_image(image: UploadFile) -> ImageSuccessResponse | DownloadErrorResponse:
+    """
+    Запускает пайплайн на изображении.
 
-#     Parameters:
-#         image (UploadFile): Изображение
+    Parameters:
+        image (UploadFile): Изображение
 
-#     Returns:
-#         Словарь со статусом и таймкодами.
-#     """
-#     if image.filename is None:
-#         raise HTTPException(422, detail='Сервис не обрабатывает файл без имени :(')
+    Returns:
+        Словарь со статусом и таймкодами.
+    """
+    async def download_file(io: IO[bytes], file: UploadFile, ext: str) -> RecognitionStatus:
+        total_size = 0
+        try:
+            while chunk := await file.read(CHUNK_SIZE):
+                total_size += len(chunk)
 
-#     if image.content_type not in ALLOWED_IMAGE_MIMES:
-#         raise HTTPException(status_code=400, detail='Поддерживаются только видео, фото и архивы с фото!')
+                # Проверка есть на фронтенде, бэкенд ее дублирует
+                if total_size > MAX_SIZE_MIB:
+                    return RecognitionStatus.SIZE_LIMIT
+                io.write(chunk)
+            return RecognitionStatus.IRBIS_FOUND
 
-#     # Получаем суффикс из файла
-#     image_name = Path(image.filename)
-#     if not image_name.suffix:
-#         ext = puremagic.from_file(image_name)
-#     else:
-#         ext = image_name.suffix
+        except Exception as e:
+            # Проверять существование частично загруженного файла не нужно,
+            # контекстный менеджер корректно закрывается
+            logger.opt(exception=True).error(e)
+            return RecognitionStatus.DOWNLOAD_ERROR
 
-#     # Загружаем файл
-#     download_status = await download_file(image, ext)
-#     match download_status:
-#         case RecognitionStatus.DOWNLOAD_ERROR as error:
-#             return DownloadErrorResponse(
-#                 status=error,
-#                 detail="Во время загрузки файла произошла ошибка :("
-#             )
+    # Что ты говорил про output
+    if image.filename is None:
+        raise HTTPException(422, detail='Сервис не обрабатывает файл без имени :(')
 
-#         case RecognitionStatus.SIZE_LIMIT as error:
-#             max_size_mebibytes = MAX_SIZE_BYTES / 1024 / 1024
-#             return DownloadErrorResponse(
-#                 status=error,
-#                 detail=f"Файл слишком большой, лимит - {(max_size_mebibytes):.2f}"
-#             )
+    if image.content_type not in ALLOWED_IMAGE_MIMES:
+        raise HTTPException(status_code=400, detail='Поддерживаются только видео, фото и архивы с фото!')
 
-#         case RecognitionStatus.OK as success:
-#             bboxed_image_path = model.find_intervals(
-#                 image_path, threshold=0.5, smoothing_interval=3, gap=10
-#             )
-#             return ImageSuccessResponse(
-#                 status=success,
-#                 path=bboxed_image_path
-#             )
+    # Получаем суффикс из файла
+    image_name = Path(image.filename)
+    if not image_name.suffix:
+        ext = puremagic.from_file(image_name)
+    else:
+        ext = image_name.suffix
+
+    # Загружаем файл
+    with NamedTemporaryFile('wb', suffix=ext) as image_file:
+        download_status = await download_file(image_file, image, ext)
+        match download_status:
+            case RecognitionStatus.DOWNLOAD_ERROR as error:
+                return DownloadErrorResponse(
+                    status=error,
+                    detail="Во время загрузки файла произошла ошибка :("
+                )
+
+            case RecognitionStatus.SIZE_LIMIT as error:
+                return DownloadErrorResponse(
+                    status=error,
+                    detail=f"Файл слишком большой, лимит - {MAX_SIZE_MIB:.2f}"
+                )
+
+            case RecognitionStatus.IRBIS_FOUND as success:
+                # Собираем путь для сохранения видео от модели и вызываем модель
+                image_path = Path(image_file.name)
+                output_name = f'{uuid4()}.jpg'
+                output_path = get_output_images_dpath() / output_name
+                model.detect_image(image_path, output_path)
+                relative_output_path = str(output_path.relative_to(get_project_root()))
+                bboxed_image_link = urljoin(ROOT_LINK, relative_output_path)
+                return ImageSuccessResponse(
+                    status=success,
+                    link=bboxed_image_link
+                )

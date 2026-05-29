@@ -11,10 +11,11 @@ from timecode import Timecode
 from torchcodec.decoders import VideoDecoder
 from torchcodec.encoders import Encoder
 from torchvision.ops import nms
+from torchvision.io import decode_image, write_jpeg
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
-from src.paths import get_yolo_weights_path
+from src.paths import get_yolo_weights_path, get_output_images_dpath
 from src.types import ProcessedFrame, TimeInterval, ModelPrediction, ProcessedVideo
 from src.utils import preprocess, rescale_bboxes, make_glyph_atlas, blit_text, draw_bboxes
 
@@ -75,13 +76,17 @@ class Model:
 
         return ModelPrediction(peak_conf, img)
 
-    def __make_prediction(self, frames: torch.Tensor, single: bool = False) -> Iterator[ModelPrediction] | ModelPrediction:
+    def __make_prediction(self,
+        frames: torch.Tensor,
+        single: bool = False,
+        threshold: float = 0.25) -> Iterator[ModelPrediction] | ModelPrediction:
         """
         Make a prediction on a single (C, H, W) image or a batch (B, C, H, W) of images.
 
         Parameters:
             frames: input data in PyTorch canonical tensor format.
             single: whether a prediction should be singular or not. This method behaves as an iterator for the latter case.
+            threshold: FIXME!!!
 
         Returns:
             A single ModelPrediction or a sequence of them via an Iterator.
@@ -90,7 +95,7 @@ class Model:
         preprocessed_frames: torch.Tensor = preprocess(frames, 736)
 
         # Feed tensors to YOLO to obtain an actual prediction
-        results_list: list[Results] = self.__model(preprocessed_frames, verbose=self.__verbose, device=self.__device)
+        results_list: list[Results] = self.__model(preprocessed_frames, conf=threshold, verbose=self.__verbose, device=self.__device)
 
         # Return a single prediction
         if single:
@@ -103,7 +108,7 @@ class Model:
 
         return results_iterator()
 
-    def __process_video(self, video_path: Path, gap: int = 2, batch_size: int = 16) -> ProcessedVideo:
+    def __process_video(self, video_path: Path, gap: int = 2, batch_size: int = 16, threshold: float = 0.25) -> ProcessedVideo:
         """
         Given path to a particular video, makes a series of predictions on its frames.
 
@@ -144,7 +149,7 @@ class Model:
                 frame_number = offset + 1 # May equal 1...total_frames
 
                 # Every batch yields 'batch_size' results with an interval of 'gap' frames between them
-                for prediction in self.__make_prediction(frames):
+                for prediction in self.__make_prediction(frames, threshold=threshold):
                     timecode = Timecode(fps, frames=frame_number)
 
                     yield ProcessedFrame(frame_number, timecode, prediction)
@@ -157,7 +162,8 @@ class Model:
             video_path: Path,
             output_path: Path,
             window_coef: float = 1.5,
-            threshold: float = 0.4,
+            window_threshold: float = 0.4,
+            threshold: float = 0.25,
             smoothing_interval: float = 2,
             gap: int = 2,
             batch_size: int = 16
@@ -172,7 +178,8 @@ class Model:
             Длина окна = FPS * window_coef
 
             smoothing_interval: Максимальный промежуток между интервалами для их слияния (в секундах).
-            threshold: Порог обнаружения барса в rolling window.
+            window_threshold: Порог обнаружения барса в rolling window.
+            threshold: FIXME!!!!
             gap: Промежуток между "значимыми" кадрами, на которых модель делает предсказания.
 
             Увеличение значения этого параметра даёт кратный прирост к производительности ценой точности временных интервалов.
@@ -187,7 +194,7 @@ class Model:
         if self.__use_profiler:
             pr.enable()
 
-        video = self.__process_video(video_path, gap, batch_size)
+        video = self.__process_video(video_path, gap, batch_size, threshold)
         window_size = int(video.fps * window_coef / gap)
         smoothing_tc = Timecode(video.fps, start_seconds=smoothing_interval)
 
@@ -212,7 +219,7 @@ class Model:
             left_frame: ProcessedFrame = window.popleft()
 
             # Если превысили порог обнаружения и запись интервала не идёт, начинаем его отслеживать
-            if avg_window_conf >= threshold and not is_recording:
+            if avg_window_conf >= window_threshold and not is_recording:
                 is_recording = True
                 start = left_frame.timecode
 
@@ -224,7 +231,7 @@ class Model:
                     intervals.append(last_interval)
 
             # Если ведём запись и упали ниже порога ЛИБО дошли до конца видео, заканчиваем интервал
-            elif is_recording and (avg_window_conf < threshold or frame.number + gap >= video.frame_count):
+            elif is_recording and (avg_window_conf < window_threshold or frame.number + gap >= video.frame_count):
                 is_recording = False
                 last_interval.end = frame.timecode
 
@@ -280,3 +287,8 @@ class Model:
         logger.info(f'Execution time: {time.time() - t}')
 
         return [str(interval) for interval in intervals]
+
+    def detect_image(self, image_path: Path, output_path: Path, threshold: float = 0.25) -> None:
+        image_tensor = decode_image(str(image_path))
+        pred: ModelPrediction = self.__make_prediction(image_tensor, single=True, threshold=threshold)
+        write_jpeg(pred.img, output_path)

@@ -24,13 +24,15 @@ class RecognitionStatus(StrEnum):
     """
     Статус ответа эндпоинта.
 
-    OK: Эндпоинт отработал по стандартному сценарию.
-    SIZE_LIMIT: Файл, переданное в эндпоинт, превышает максимальный размер.
+    IRBIS_FOUND: Эндпоинт отработал по стандартному сценарию, барсы найдены в медиа
+    SIZE_LIMIT: Файл, переданное в эндпоинт, превышает максимальный размер
     DOWNLOAD_ERROR: Произошла ошибка во время загрузки файла
+    NO_IRBIS_FOUND: В медиа не найдено ни одного барса
     """
-    OK = 'OK'
+    IRBIS_FOUND = "IRBIS_FOUND"
     SIZE_LIMIT = "SIZE_LIMIT"
     DOWNLOAD_ERROR = "DOWNLOAD_ERROR"
+    NO_IRBIS_FOUND = "NO_IRBIS_FOUND"
 
 
 class VideoSuccessResponse(TypedDict):
