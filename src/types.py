@@ -15,10 +15,10 @@ class VideoRecognitionOutput:
 
     Parameters:
         timestrings: Список таймкодов (длинных)
-        path: Путь до видео с bbox'ами
+        link: Путь до видео с bbox'ами
     """
     timestrings: list[str]
-    path: str
+    link: str
 
 
 class RecognitionStatus(StrEnum):

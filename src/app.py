@@ -88,7 +88,7 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | DownloadE
                 status=download_status,
                 data=VideoRecognitionOutput(
                     timestrings=timestrings,
-                    path='https://api.irbis.wild1.net/output/output.mp4'
+                    link='https://api.irbis.wild1.net/output/output.mp4'
                 )
             )
 
