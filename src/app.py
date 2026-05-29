@@ -149,6 +149,9 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingEr
                     detail=f"Файл слишком большой, лимит - {MAX_SIZE_MIB:.2f}"
                 )
 
+            case RecognitionStatus.NO_IRBIS_FOUND:
+                ...
+
             case RecognitionStatus.IRBIS_FOUND as success:
                 # Собираем путь для сохранения видео от модели и вызываем модель
                 image_path = Path(image_file.name)
