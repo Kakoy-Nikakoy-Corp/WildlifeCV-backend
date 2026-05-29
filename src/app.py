@@ -7,7 +7,6 @@ from tempfile import NamedTemporaryFile
 from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from loguru import logger
 import puremagic
 from sympy.external.ntheory import j
 
@@ -16,7 +15,7 @@ from src.paths import get_output_dpath, get_output_videos_dpath, get_output_imag
 from src.types import RecognitionStatus, LoadingErrorResponse
 from src.types import VideoSuccessResponse, VideoRecognitionOutput
 from src.types import ImageSuccessResponse, MultiImageSuccessResponse
-from src.utils import download_file
+from src.utils import download_file, MAX_SIZE_MIB
 
 app = FastAPI()
 model = Model()
@@ -35,8 +34,6 @@ app.add_middleware(
 )
 app.mount("/output", StaticFiles(directory=get_output_dpath()), "outputs")
 
-MAX_SIZE_MIB: Final = 500
-CHUNK_SIZE: Final = 8 * 1024 * 1024  # 8 мебибайт
 ROOT_LINK: Final = 'https://api.irbis.wild1.net'
 ALLOWED_VIDEO_MIMES = {'video/mp4', 'video/x-matroska', 'video/matroska'}
 ALLOWED_IMAGE_MIMES = {'image/jpeg', 'image/png'}

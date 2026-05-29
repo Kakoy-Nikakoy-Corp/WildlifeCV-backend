@@ -1,4 +1,4 @@
-from typing import IO
+from typing import Final, IO
 from uuid import uuid4
 
 from fastapi import UploadFile
@@ -8,10 +8,11 @@ import torchvision.transforms.v2.functional as f
 from torchvision.transforms import InterpolationMode
 from PIL import ImageDraw, ImageFont, Image
 
-from src.app import CHUNK_SIZE, MAX_SIZE_MIB
 from src.types import LetterboxParams, RecognitionStatus
 
 
+MAX_SIZE_MIB: Final = 500
+CHUNK_SIZE: Final = 8 * 1024 * 1024  # 8 мебибайт
 CHARS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', ':', ';']
 
 
