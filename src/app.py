@@ -47,9 +47,6 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingEr
 
     Parameters:
         video (UploadFile): Видеофайл
-
-    Returns:
-        Словарь со статусом и таймкодами.
     """
 
     if video.filename is None:
@@ -110,8 +107,6 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingEr
                 )
 
 
-
-
 @app.post("/recognise/image/")
 async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingErrorResponse:
     """
@@ -168,3 +163,8 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingEr
                     status=RecognitionStatus.IRBIS_FOUND,
                     link=bboxed_image_link
                 )
+
+
+@app.post("/recognise/multi-image")
+async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | LoadingErrorResponse:
+    ...
