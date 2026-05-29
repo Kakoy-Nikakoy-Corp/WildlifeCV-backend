@@ -288,7 +288,12 @@ class Model:
 
         return [str(interval) for interval in intervals]
 
-    def detect_image(self, image_path: Path, output_path: Path, threshold: float = 0.25) -> None:
+    def detect_image(self, image_path: Path, output_path: Path, threshold: float = 0.25) -> bool:
+        """
+        Returns:
+            Наличие барса на изображении.
+        """
         image_tensor = decode_image(str(image_path))
         pred: ModelPrediction = self.__make_prediction(image_tensor, single=True, threshold=threshold)
         write_jpeg(pred.img, output_path)
+        return pred.peak_conf != 0

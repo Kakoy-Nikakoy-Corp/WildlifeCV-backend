@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 import puremagic
+from sympy.external.ntheory import j
 
 from src.model import Model
 from src.paths import get_output_dpath, get_output_videos_dpath, get_output_images_dpath, get_output_archives_dpath, get_project_root
@@ -83,7 +84,7 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingEr
                     detail=f"Файл слишком большой, лимит - {MAX_SIZE_MIB:.2f}"
                 )
 
-            case RecognitionStatus.IRBIS_FOUND as success:
+            case _:  # case IRBIS_FOUND
                 # Собираем путь для сохранения видео от модели и вызываем модель
                 output_name = f'{uuid4()}.mp4'
                 output_path = get_output_videos_dpath() / output_name
@@ -95,10 +96,16 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingEr
                     gap=10,
                     batch_size=32
                 )
+                if not timestrings:
+                    return LoadingErrorResponse(
+                        status=RecognitionStatus.NO_IRBIS_FOUND,
+                        detail="Снежный барс не обнаружен :("
+                    )
+
                 relative_output_path = str(output_path.relative_to(get_project_root()))
                 bboxed_video_link = urljoin(ROOT_LINK, relative_output_path)
                 return VideoSuccessResponse(
-                    status=success,
+                    status=RecognitionStatus.IRBIS_FOUND,
                     data=VideoRecognitionOutput(
                         timestrings=timestrings,
                         link=bboxed_video_link
@@ -149,18 +156,21 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingEr
                     detail=f"Файл слишком большой, лимит - {MAX_SIZE_MIB:.2f}"
                 )
 
-            case RecognitionStatus.NO_IRBIS_FOUND:
-                ...
-
-            case RecognitionStatus.IRBIS_FOUND as success:
+            case _:
                 # Собираем путь для сохранения видео от модели и вызываем модель
                 image_path = Path(image_file.name)
                 output_name = f'{uuid4()}.jpg'
                 output_path = get_output_images_dpath() / output_name
-                model.detect_image(image_path, output_path)
+                is_found = model.detect_image(image_path, output_path)
+                if not is_found:
+                    return LoadingErrorResponse(
+                        status=RecognitionStatus.NO_IRBIS_FOUND,
+                        detail="Снежный барс не обнаружен :("
+                    )
+
                 relative_output_path = str(output_path.relative_to(get_project_root()))
                 bboxed_image_link = urljoin(ROOT_LINK, relative_output_path)
                 return ImageSuccessResponse(
-                    status=success,
+                    status=RecognitionStatus.IRBIS_FOUND,
                     link=bboxed_image_link
                 )
