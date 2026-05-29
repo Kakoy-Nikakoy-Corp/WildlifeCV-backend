@@ -1,15 +1,9 @@
-from pathlib import Path
-from tempfile import NamedTemporaryFile
-from typing import Any, Coroutine
-from uuid import uuid4
-
 import torch
-from fastapi import UploadFile
 import torchvision.transforms.v2.functional as f
 from torchvision.transforms import InterpolationMode
 from PIL import ImageDraw, ImageFont, Image
 
-from src.types import LetterboxParams, RecognitionStatus
+from src.types import LetterboxParams
 
 CHARS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', ':', ';']
 
@@ -62,43 +56,6 @@ def preprocess(img: torch.Tensor, target_size: int = 640) -> torch.Tensor:
     letterboxed[:, :, top:bottom, left:right] = resized
 
     return letterboxed / 255.0
-
-
-def get_uuid4() -> str:
-    """Возвращает UUID в формате строки."""
-    return str(uuid4())
-
-
-async def download_file(
-    file: UploadFile,
-    file_extension: str,
-    chunk_size: int = 8*1024*1024,
-    max_size: int = 500*1024*1024
-) -> RecognitionStatus:
-    """
-    Загружает файл и возвращает код загрузки.
-
-    Args:
-        file: Файл от фронтенда, который нужно сохранить
-        extension: Расширение файла
-        chunk_size: Размер чанка загрузки (в байтах)
-        max_size: Максимальный размер файла (в байтах)
-    """
-    total_size = 0
-    try:
-        with NamedTemporaryFile(suffix=file_extension) as media_file:
-            while chunk := await file.read(chunk_size):
-                total_size += len(chunk)
-                # Проверка есть на фронтенде, бэкенд ее дублирует
-                if total_size > max_size:
-                    return RecognitionStatus.SIZE_LIMIT
-                media_file.write(chunk)
-        return RecognitionStatus.OK
-
-    except Exception:
-        # Проверять существование частично загруженного файла не нужно,
-        # контекстный менеджер корреткно закрывается
-        return RecognitionStatus.DOWNLOAD_ERROR
 
 
 def rescale_bboxes(

@@ -1,8 +1,7 @@
 from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
-from typing import TypedDict, Protocol
+from typing import TypedDict
 
 import torch
 from timecode import Timecode
@@ -52,10 +51,10 @@ class ImageSuccessResponse(TypedDict):
 
     Parameters:
         status: Значение RecognitionStatus
-        path: Путь к обработанному изображению
+        link: Путь к обработанному изображению
     """
     status: RecognitionStatus
-    path: Path
+    link: str
 
 
 class MultiImageSuccessResponse(TypedDict):
@@ -124,23 +123,23 @@ class TimeInterval:
         return f"{self.start}-{self.end}"
 
 
-class ModelProtocol(Protocol):
-    def detect_video_timeintervals(
-        self,
-        video_path: Path,
-        output_path: Path,
-        window_coef: float,
-        threshold: float,
-        smoothing_interval: float,
-        gap: int,
-        batch_size: int
-    ) -> VideoRecognitionOutput:
-        ...
-
-    def detect_image(self, image_path: Path) -> Path:
-        ...
-
-    # Обработка картинок в архиве:
-    #   - Собираем картинки в объект видео
-    #   - Сохраняем видео на диск
-    #   - Юзаем detect_video
+# class ModelProtocol(Protocol):
+#     def detect_video_timeintervals(
+#         self,
+#         video_path: Path,
+#         output_path: Path,
+#         window_coef: float,
+#         threshold: float,
+#         smoothing_interval: float,
+#         gap: int,
+#         batch_size: int
+#     ) -> VideoRecognitionOutput:
+#         ...
+#
+#     def detect_image(self, image_path: Path) -> Path:
+#         ...
+#
+#     # Обработка картинок в архиве:
+#     #   - Собираем картинки в объект видео
+#     #   - Сохраняем видео на диск
+#     #   - Юзаем detect_video
