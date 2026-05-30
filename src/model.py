@@ -99,7 +99,7 @@ class Model:
 
         # Return a single prediction
         if single:
-            return self.__postprocess(results_list[0], frames[0])
+            return self.__postprocess(results_list[0], frames)
 
         # Generate results one by one in case of batch prediction
         def results_iterator() -> Iterator[ModelPrediction]:
@@ -206,38 +206,8 @@ class Model:
         window: deque[ProcessedFrame] = deque()
         intervals: list[TimeInterval] = []
 
-        all_frames: list[ProcessedFrame] = []
-        for frame in video.frames:
-            all_frames.append(frame)
-            window.append(frame)
-            avg_window_conf += frame.prediction.peak_conf / window_size
-
-            # deque len -> O(1)
-            if len(window) < window_size:
-                continue
-
-            left_frame: ProcessedFrame = window.popleft()
-
-            # Если превысили порог обнаружения и запись интервала не идёт, начинаем его отслеживать
-            if avg_window_conf >= window_threshold and not is_recording:
-                is_recording = True
-                start = left_frame.timecode
-
-                # Если с конца предыдущей записи не прошло smoothing_interval секунд
-                # (и такая запись вообще имеется), то вместо добавления нового
-                # интервала будем "двигать" конец предыдущего, чтобы слить их в один
-                if last_interval is None or start >= last_interval.end + smoothing_tc:
-                    last_interval = TimeInterval(start=start, end=None)
-                    intervals.append(last_interval)
-
-            # Если ведём запись и упали ниже порога ЛИБО дошли до конца видео, заканчиваем интервал
-            elif is_recording and (avg_window_conf < window_threshold or frame.number + gap >= video.frame_count):
-                is_recording = False
-                last_interval.end = frame.timecode
-
-            avg_window_conf -= left_frame.prediction.peak_conf / window_size
-
         encoder = Encoder()
+        last_time_written: Timecode | None = None
         if self.__device == 'cpu':
             params = {
                 'codec': 'libx264',
@@ -268,15 +238,61 @@ class Model:
         )
         encoder.open_file(output_path)
 
-        for interval in intervals:
-            start = (interval.start.frames - 1) // gap
-            end = (interval.end.frames - 1) // gap
-
-            for i in range(start, end + 1):
-                frame = all_frames[i]
-                img = frame.prediction.img
-                final_img = blit_text(img, str(frame.timecode), self.glyph_atlas, 30, video.height - 80)
+        def write_frame_to_file(f: ProcessedFrame) -> Timecode:
+            if last_time_written is None or f.timecode > last_time_written:
+                img = f.prediction.img
+                final_img = blit_text(img, str(f.timecode), self.glyph_atlas, 30, video.height - 80)
                 stream.add_frames(final_img.unsqueeze(0))
+
+                return f.timecode
+
+            return last_time_written
+
+        buffer: deque[ProcessedFrame] = deque()
+        for frame in video.frames:
+            window.append(frame)
+            avg_window_conf += frame.prediction.peak_conf / window_size
+
+            # deque len -> O(1)
+            if len(window) < window_size:
+                continue
+
+            left_frame: ProcessedFrame = window.popleft()
+
+            if last_interval and last_interval.end and last_interval.end < frame.timecode < last_interval.end + smoothing_tc:
+                buffer.append(frame)
+
+            # Если превысили порог обнаружения и запись интервала не идёт, начинаем его отслеживать
+            if avg_window_conf >= window_threshold and not is_recording:
+                is_recording = True
+                start = left_frame.timecode
+
+                # Если с конца предыдущей записи не прошло smoothing_interval секунд
+                # (и такая запись вообще имеется), то вместо добавления нового
+                # интервала будем "двигать" конец предыдущего, чтобы слить их в один
+                if last_interval is None or start >= last_interval.end + smoothing_tc:
+                    last_interval = TimeInterval(start=start, end=None)
+                    intervals.append(last_interval)
+                elif last_interval.end < start:
+                    while len(buffer) != 0:
+                        last_time_written = write_frame_to_file(buffer.popleft())
+
+                buffer.clear()
+
+                # Записываем окно
+                last_time_written = write_frame_to_file(left_frame)
+                for fr in window:
+                    last_time_written = write_frame_to_file(fr)
+
+            elif is_recording:
+                last_time_written = write_frame_to_file(frame)
+
+            # Если ведём запись и упали ниже порога ЛИБО дошли до конца видео, заканчиваем интервал
+            if is_recording and (avg_window_conf < window_threshold or frame.number + gap >= video.frame_count):
+                is_recording = False
+                last_interval.end = frame.timecode
+
+            avg_window_conf -= left_frame.prediction.peak_conf / window_size
 
         encoder.close()
 

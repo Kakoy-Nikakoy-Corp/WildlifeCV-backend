@@ -29,10 +29,16 @@ def rolling_window(
     intervals: list[TimeInterval] = []
     encoder_input: list[ProcessedFrame] = []
 
-    buffer: list[ProcessedFrame] = []
-    all_frames: list[ProcessedFrame] = []
+    last_time_written: Timecode | None = None
+    def write_frame_to_file(f: ProcessedFrame) -> Timecode:
+        if last_time_written is None or f.timecode > last_time_written:
+            encoder_input.append(f)
+            return f.timecode
+
+        return last_time_written
+
+    buffer: deque[ProcessedFrame] = deque()
     for frame in frames:
-        all_frames.append(frame)
         window.append(frame)
         avg_window_conf += frame.prediction.peak_conf / window_size
 
@@ -42,10 +48,12 @@ def rolling_window(
 
         left_frame: ProcessedFrame = window.popleft()
 
+        if last_interval and last_interval.end and last_interval.end < frame.timecode < last_interval.end + smoothing_tc:
+            buffer.append(frame)
+
         # Если превысили порог обнаружения и запись интервала не идёт, начинаем его отслеживать
         if avg_window_conf >= window_threshold and not is_recording:
             is_recording = True
-            buffer.append(left_frame)
             start = left_frame.timecode
 
             # Если с конца предыдущей записи не прошло smoothing_interval секунд
@@ -54,13 +62,24 @@ def rolling_window(
             if last_interval is None or start >= last_interval.end + smoothing_tc:
                 last_interval = TimeInterval(start=start, end=None)
                 intervals.append(last_interval)
+            elif last_interval.end < start:
+                while len(buffer) != 0:
+                    last_time_written = write_frame_to_file(buffer.popleft())
+
+            buffer.clear()
+
+            # Записываем окно
+            last_time_written = write_frame_to_file(left_frame)
+            for fr in window:
+                last_time_written = write_frame_to_file(fr)
+
+        elif is_recording:
+            last_time_written = write_frame_to_file(frame)
 
         # Если ведём запись и упали ниже порога ЛИБО дошли до конца видео, заканчиваем интервал
-        elif is_recording and (avg_window_conf < window_threshold or frame.number + gap >= frame_count):
+        if is_recording and (avg_window_conf < window_threshold or frame.number + gap >= frame_count):
             is_recording = False
             last_interval.end = frame.timecode
-            encoder_input.extend(buffer)
-            buffer.clear()
 
         avg_window_conf -= left_frame.prediction.peak_conf / window_size
 
@@ -148,7 +167,7 @@ def test_rolling_window_two_diff_intervals():
 
     frames_dump = sut(
         frame_iterator, FPS, frame_amount,
-        window_coef=0.1, window_threshold=0.8, smoothing_interval=1, gap=1
+        window_coef=0.1, window_threshold=0.8, smoothing_interval=1/FPS, gap=1
     )
 
     assert frames_dump == expected_dump
@@ -196,7 +215,7 @@ def test_rolling_window_two_overlapped_intervals():
 
     frames_dump = sut(
         frame_iterator, FPS, frame_amount,
-        window_coef=0.17, window_threshold=0.6, smoothing_interval=0, gap=1
+        window_coef=0.17, window_threshold=0.6, smoothing_interval=1/FPS, gap=1
     )
 
     assert frames_dump == expected_dump
@@ -217,6 +236,8 @@ def test_rolling_window_two_merged_intervals():
         0.8,
         0.8,
         0.1,
+        0.1,
+        0.1,
         0.4,
         0.4,
         1.0
@@ -228,9 +249,11 @@ def test_rolling_window_two_merged_intervals():
         (2, 0.8),
         (3, 0.8),
         (4, 0.1),
-        (5, 0.4),
-        (6, 0.4),
-        (7, 1.0)
+        (5, 0.1),
+        (6, 0.1),
+        (7, 0.4),
+        (8, 0.4),
+        (9, 1.0)
     ]
 
     frame_amount = len(confs)
@@ -240,7 +263,7 @@ def test_rolling_window_two_merged_intervals():
 
     frames_dump = sut(
         frame_iterator, FPS, frame_amount,
-        window_coef=0.1, window_threshold=0.6, smoothing_interval=4, gap=1
+        window_coef=0.1, window_threshold=0.6, smoothing_interval=4/FPS, gap=1
     )
 
     assert frames_dump == expected_dump

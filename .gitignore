@@ -10,3 +10,4 @@ tests/videos
 .idea/
 weights/
 torchcodec/
+output/
