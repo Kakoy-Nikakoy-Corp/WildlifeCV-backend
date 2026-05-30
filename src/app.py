@@ -7,7 +7,6 @@ import patoolib
 from fastapi import FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 
 from src.model import Model
 from src.paths import (
@@ -42,7 +41,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
-app.mount("/output", StaticFiles(directory=get_output_dpath()), "outputs")
 
 ROOT_LINK: Final = 'https://api.irbis.wild1.net'
 ALLOWED_VIDEO_MIMES = {'video/mp4', 'video/x-matroska', 'video/matroska'}
@@ -64,15 +62,15 @@ SUPPORTED_IMAGE_TYPES: Final = {'jpg', 'jpeg', 'png'}
 ARCHIVE_COLLAGE_SIZE: Final = 4
 
 
-@app.get("/output/{filename}")
-async def download_video(filename: str) -> FileResponse:
-    file_path = get_output_dpath() / filename
+@app.get("/output/{folder}/{filename}")
+async def download_video(folder: str, filename: str) -> FileResponse:
+    file_path = get_output_dpath() / folder / filename
 
-    if 'videos' in filename:
+    if folder == 'videos':
         return FileResponse(
             path=file_path,
             filename=filename,
-            media_type="video/mp4"
+            media_type="video/mp4",
         )
 
 
