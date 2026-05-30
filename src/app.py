@@ -80,8 +80,9 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingEr
 
     # Получаем расширение файла
     ext = get_file_extension(video.filename)
-    with NamedTemporaryFile(suffix=ext) as video_file:
+    with NamedTemporaryFile(suffix=ext, delete_on_close=False) as video_file:
         download_status = await download_file(video_file, video)
+        video_file.close()
 
         match download_status:
             case RecognitionStatus.DOWNLOAD_ERROR as error:
@@ -131,8 +132,11 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingEr
 
     # Получаем расширение изображения
     ext = get_file_extension(image.filename)
-    with NamedTemporaryFile(suffix=ext) as image_file:
+    # Загружаем файл
+    with NamedTemporaryFile('wb', suffix=ext, delete_on_close=False) as image_file:
         download_status = await download_file(image_file, image)
+        image_file.close()
+
         match download_status:
             case RecognitionStatus.DOWNLOAD_ERROR as error:
                 return TEMPLATE_RESPONSES[error]
