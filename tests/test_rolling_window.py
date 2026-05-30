@@ -2,7 +2,6 @@ from collections import deque
 from typing import Any, Generator, Iterator
 
 import pytest
-from pytest_mock import MockerFixture
 from timecode import Timecode
 from torch import zeros
 
@@ -105,7 +104,7 @@ def get_frame_list(conf_pairs: list[tuple[int, float]], fps: int = 30) -> list[P
     return frames
 
 
-def test_rolling_window_behaviour(mocker: MockerFixture):
+def test_rolling_window_behaviour():
     # Управление настройками видео.
     # Каждая уверенность - это кадр
     # Список уверенностей - это как бы видео
