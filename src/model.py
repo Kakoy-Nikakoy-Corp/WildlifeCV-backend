@@ -269,5 +269,5 @@ class Model:
         """
         image_tensor = decode_image(str(image_path)).to(self.__device)
         pred: ModelPrediction = self.__make_prediction(image_tensor, single=True, threshold=threshold)
-        write_jpeg(pred.img, output_path)
+        write_jpeg(pred.img.to('cpu'), output_path)
         return pred.peak_conf != 0
