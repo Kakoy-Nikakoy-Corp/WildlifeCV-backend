@@ -84,8 +84,8 @@ def get_frame_stream(confs: list[float], fps: int = 30) -> Generator[ProcessedFr
 
 def get_frame_list(conf_pairs: list[tuple[int, float]], fps: int = 30) -> list[ProcessedFrame]:
     """
-    Эмулирует возврат 'видео' как набор кадров.
-    Нужен, чтобы сгенерировать ожидаемый дамп.
+    Эмулирует возврат 'видео' как набора кадров.
+    Нужна для генерации ожидаемого дампа.
 
     Parameters:
         conf_pairs: Список из пар вида 'номер-кадра, conf'
@@ -104,24 +104,40 @@ def get_frame_list(conf_pairs: list[tuple[int, float]], fps: int = 30) -> list[P
     return frames
 
 
-def test_rolling_window_behaviour():
+def test_rolling_window_two_diff_intervals():
+    """
+    Тесткейс механизма rolling window.
+
+    Два полностью разных интервала, не сливающиеся в один.
+    """
     # Управление настройками видео.
     # Каждая уверенность - это кадр
     # Список уверенностей - это как бы видео
     FPS = 30
     confs = [
         0.8,
-        0.6,
         0.8,
-        0.2
+        0.8,
+        0.8,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.8,
+        0.8,
+        0.8
     ]
     # Очень простое представление ожидаемых кадров в дампе.
     # Пары вида 'Номер кадра + уверенность в кадре'
     expected_conf_pairs = [
-        (1, 0.8),
-        (2, 0.6),
-        (3, 0.8),
-        (4, 0.2)
+        (1,  0.8),
+        (2,  0.8),
+        (3,  0.8),
+        (4,  0.8),
+        (10,  0.8),
+        (11,  0.8),
+        (12,  0.8)
     ]
 
     frame_amount = len(confs)
@@ -131,7 +147,99 @@ def test_rolling_window_behaviour():
 
     frames_dump = sut(
         frame_iterator, FPS, frame_amount,
-        window_coef=0.1, window_threshold=0.8
+        window_coef=0.1, window_threshold=0.8, smoothing_interval=1, gap=1
+    )
+
+    assert frames_dump == expected_dump
+
+
+def test_rolling_window_two_overlapped_intervals():
+    """
+    Тесткейс механизма rolling window.
+
+    Два интервала, сливающихся в один из-за наложения
+    """
+    # Управление настройками видео.
+    # Каждая уверенность - это кадр
+    # Список уверенностей - это как бы видео
+    FPS = 30
+    confs = [
+        0.6,
+        0.6,
+        0.6,
+        0.6,
+        0.6,
+        0.2,
+        0.2,
+        1.0,
+        1.0
+    ]
+    # Очень простое представление ожидаемых кадров в дампе.
+    # Пары вида 'Номер кадра + уверенность в кадре'
+    expected_conf_pairs = [
+        (1, 0.6),
+        (2, 0.6),
+        (3, 0.6),
+        (4, 0.6),
+        (5, 0.6),
+        (6, 0.2),
+        (7, 0.2),
+        (8, 1.0),
+        (9, 1.0)
+    ]
+
+    frame_amount = len(confs)
+    frame_iterator = get_frame_stream(confs=confs, fps=FPS)
+    expected_dump = get_frame_list(expected_conf_pairs, FPS)
+    sut = rolling_window
+
+    frames_dump = sut(
+        frame_iterator, FPS, frame_amount,
+        window_coef=0.17, window_threshold=0.6, smoothing_interval=0, gap=1
+    )
+
+    assert frames_dump == expected_dump
+
+
+def test_rolling_window_two_merged_intervals():
+    """
+    Тесткейс механизма rolling window.
+
+    Два интервала, сливающихся в один из-за механизма smoothing_tc
+    """
+    # Управление настройками видео.
+    # Каждая уверенность - это кадр
+    # Список уверенностей - это как бы видео
+    FPS = 30
+    confs = [
+        0.8,
+        0.8,
+        0.8,
+        0.1,
+        0.4,
+        0.4,
+        1.0
+    ]
+    # Очень простое представление ожидаемых кадров в дампе.
+    # Пары вида 'Номер кадра + уверенность в кадре'
+    expected_conf_pairs = [
+        (1, 0.8),
+        (2, 0.8),
+        (3, 0.8),
+        (4, 0.1),
+        (5, 0.4),
+        (6, 0.4),
+        (7, 1.0)
+    ]
+
+    frame_amount = len(confs)
+    frame_iterator = get_frame_stream(confs=confs, fps=FPS)
+    expected_dump = get_frame_list(expected_conf_pairs, FPS)
+    sut = rolling_window
+
+    frames_dump = sut(
+        frame_iterator, FPS, frame_amount,
+        window_coef=0.1, window_threshold=0.6, smoothing_interval=4, gap=1
     )
 
     assert frames_dump == expected_dump
