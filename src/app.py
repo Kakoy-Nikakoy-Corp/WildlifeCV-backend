@@ -190,7 +190,7 @@ async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | 
 
                     bboxed_image_paths: list[Path] = []
                     is_any_irbis = False
-                    first_images: list[str] = []
+                    collage_images: list[str] = []
                     # Итерируемся по изображениям в извелеченном архиве
                     for file in Path(extracted_images_dir).iterdir():
                         file_ext = file.suffix.lower()
@@ -202,17 +202,17 @@ async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | 
                             # или только фото с обнаруженным барсом?
                             bboxed_image_paths.append(output_path)
                             # Заполняем список ссылок для превью архива в фронтенде
-                            if len(first_images) < ARCHIVE_COLLAGE_SIZE:
+                            if len(collage_images) < ARCHIVE_COLLAGE_SIZE:
                                 relative_image_path = str(output_path.relative_to(get_project_root()))
                                 bboxed_image_link = urljoin(ROOT_LINK, relative_image_path)
-                                first_images.append(bboxed_image_link)
+                                collage_images.append(bboxed_image_link)
 
-                    # FIXME!!!!
-                    if not is_any_irbis or not first_images:
+                    # FIXME!!!! Comment me!!!
+                    if not is_any_irbis or not collage_images:
                         return TEMPLATE_RESPONSES[RecognitionStatus.NO_IRBIS_FOUND]
 
-                    while len(first_images) < ARCHIVE_COLLAGE_SIZE:
-                        first_images.append(first_images[-1])
+                    while len(collage_images) < ARCHIVE_COLLAGE_SIZE:
+                        collage_images.append(collage_images[-1])
 
 
                     output_archive_path = get_output_archives_dpath() / f'{get_uuid4()}.zip'
@@ -223,5 +223,5 @@ async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | 
                     return MultiImageSuccessResponse(
                         status=RecognitionStatus.IRBIS_FOUND,
                         link=output_archive_link,
-                        first_images=first_images
+                        collage_images=collage_images
                     )

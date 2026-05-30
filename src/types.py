@@ -68,11 +68,11 @@ class MultiImageSuccessResponse(TypedDict):
     Parameters:
         status: Значение RecognitionStatus
         link: Ссылка на обработанный архив
-        first_images: Ссылки на первые картинки из архива (4 или меньше)
+        collage_images: Ссылки на картинки для превью архива
     """
     status: RecognitionStatus
     link: str
-    first_images: list[str]
+    collage_images: list[str]
 
 
 @dataclass(slots=True, frozen=True)
