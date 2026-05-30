@@ -9,15 +9,15 @@ import torch
 from loguru import logger
 from timecode import Timecode
 from torchcodec.decoders import VideoDecoder
-from torchcodec.encoders import Encoder
 from torchvision.ops import nms
 from torchvision.io import decode_image, write_jpeg
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
-from src.paths import get_yolo_weights_path, get_output_images_dpath
+from src.paths import get_yolo_weights_path
 from src.types import ProcessedFrame, TimeInterval, ModelPrediction, ProcessedVideo
-from src.utils import preprocess, rescale_bboxes, make_glyph_atlas, blit_text, draw_bboxes
+from src.utils import preprocess, rescale_bboxes, draw_bboxes
+from src.overlay import OverlayEncoder
 
 pr = cProfile.Profile()  # Virtually no performance impact until enabled
 
@@ -31,12 +31,10 @@ class Model:
         # Determine a primary computational unit we're using (CUDA/CPU)
         self.__device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        # Instantiate a model
+        # Instantiate a model + encoder
         weights_path: Path = get_yolo_weights_path()
         self.__model = YOLO(weights_path, verbose=self.__verbose, task='detect')
-
-        # Set up the Glyph Atlas
-        self.glyph_atlas = make_glyph_atlas(device=self.__device)
+        self.__overlay = OverlayEncoder(self.__device)
 
         logger.add('model_inf.log', level='INFO')
 
@@ -72,7 +70,7 @@ class Model:
         # brown, seagreen, orange, darkviolet
         colors = [(165, 42, 42), (46, 139, 87), (255, 165, 0), (148, 0, 211)]
         label_colors = [(230, 230, 250)]  # lavender
-        img = draw_bboxes(original_image, scaled_bboxes, labels, self.glyph_atlas, colors, label_colors, 5)
+        img = draw_bboxes(original_image, scaled_bboxes, labels, self.__overlay.glyph_atlas, colors, label_colors, 5)
 
         return ModelPrediction(peak_conf, img)
 
@@ -155,7 +153,7 @@ class Model:
                     yield ProcessedFrame(frame_number, timecode, prediction)
                     frame_number += gap
 
-        return ProcessedVideo(fps, width, height, total_frames, frames_iterator())
+        return ProcessedVideo(fps / gap, width, height, total_frames, frames_iterator())
 
     def detect_video_intervals(
             self,
@@ -195,8 +193,8 @@ class Model:
             pr.enable()
 
         video = self.__process_video(video_path, gap, batch_size, threshold)
-        window_size = int(video.fps * window_coef / gap)
-        smoothing_tc = Timecode(video.fps, start_seconds=smoothing_interval)
+        window_size = int(video.fps * window_coef)
+        smoothing_tc = Timecode(video.fps * gap, start_seconds=smoothing_interval)
 
         # Алгоритм Rolling Window для сглаживания и уточнения предсказаний модели на временных интервалах
         avg_window_conf = 0.
@@ -206,47 +204,7 @@ class Model:
         window: deque[ProcessedFrame] = deque()
         intervals: list[TimeInterval] = []
 
-        encoder = Encoder()
-        last_time_written: Timecode | None = None
-        if self.__device == 'cpu':
-            params = {
-                'codec': 'libx264',
-                'pixel_format': "yuv420p",
-                'crf': 30,
-                'preset': 'ultrafast',
-                'extra_options': {
-                    "tune": "zerolatency",
-                },
-            }
-        else:
-            params = {
-                'codec': 'h264_nvenc',
-                'device': 'cuda',
-                'crf': 30,
-                'preset': 'p1',
-                'extra_options': {
-                    "tune": 3,
-                    "qp": 30
-                }
-            }
-
-        stream = encoder.add_video(
-            height=video.height,
-            width=video.width,
-            frame_rate=video.fps / gap,
-            **params
-        )
-        encoder.open_file(output_path)
-
-        def write_frame_to_file(f: ProcessedFrame) -> Timecode:
-            if last_time_written is None or f.timecode > last_time_written:
-                img = f.prediction.img
-                final_img = blit_text(img, str(f.timecode), self.glyph_atlas, 30, video.height - 80)
-                stream.add_frames(final_img.unsqueeze(0))
-
-                return f.timecode
-
-            return last_time_written
+        self.__overlay.new_video(video, output_path)
 
         buffer: deque[ProcessedFrame] = deque()
         for frame in video.frames:
@@ -275,17 +233,17 @@ class Model:
                     intervals.append(last_interval)
                 elif last_interval.end < start:
                     while len(buffer) != 0:
-                        last_time_written = write_frame_to_file(buffer.popleft())
+                        self.__overlay.add_frame(buffer.popleft())
 
                 buffer.clear()
 
                 # Записываем окно
-                last_time_written = write_frame_to_file(left_frame)
-                for fr in window:
-                    last_time_written = write_frame_to_file(fr)
+                self.__overlay.add_frame(left_frame)
+                for window_frame in window:
+                    self.__overlay.add_frame(window_frame)
 
             elif is_recording:
-                last_time_written = write_frame_to_file(frame)
+                self.__overlay.add_frame(frame)
 
             # Если ведём запись и упали ниже порога ЛИБО дошли до конца видео, заканчиваем интервал
             if is_recording and (avg_window_conf < window_threshold or frame.number + gap >= video.frame_count):
@@ -294,7 +252,7 @@ class Model:
 
             avg_window_conf -= left_frame.prediction.peak_conf / window_size
 
-        encoder.close()
+        self.__overlay.close()
 
         if self.__use_profiler:
             pr.disable()
