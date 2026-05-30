@@ -6,9 +6,7 @@ from urllib.parse import urljoin
 from fastapi import FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from jinja2.ext import i18n
 import patoolib
-import puremagic
 
 from src.model import Model
 from src.paths import (
@@ -21,7 +19,8 @@ from src.types import (
     VideoSuccessResponse, VideoRecognitionOutput,
     ImageSuccessResponse, MultiImageSuccessResponse
 )
-from src.utils import download_file, get_uuid4, MAX_SIZE_MIB
+from src.utils import download_file, get_uuid4, get_file_extension
+
 
 app = FastAPI()
 model = Model()
@@ -52,7 +51,12 @@ ALLOWED_ARCHIVE_MIMES = {
     'application/rar',
     'application/vnd.rar',
 }
-SUPPORTED_IMAGE_TYPES = {'jpg', 'jpeg', 'png'}
+
+# `torchvision.io.decode_image` documentation page:
+# > Currently supported image formats are
+# > jpeg, png, gif and webp
+SUPPORTED_IMAGE_TYPES: Final = {'jpg', 'jpeg', 'png'}
+ARCHIVE_COLLAGE_SIZE: Final = 4
 
 
 @app.post("/recognise/video/")
@@ -71,12 +75,7 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingEr
         raise TemplateException.UNSUPPORTED_MIME_TYPE.value
 
     # Получаем расширение файла
-    video_name = Path(video.filename)
-    if video_name.suffix is None:
-        ext = puremagic.from_file(video_name)
-    else:
-        ext = video_name.suffix
-
+    ext = get_file_extension(video.filename)
     with NamedTemporaryFile(suffix=ext) as video_file:
         download_status = await download_file(video_file, video)
 
@@ -128,15 +127,9 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingEr
     if image.content_type not in ALLOWED_IMAGE_MIMES:
         raise TemplateException.UNSUPPORTED_MIME_TYPE.value
 
-    # Получаем суффикс из файла
-    image_name = Path(image.filename)
-    if not image_name.suffix:
-        ext = puremagic.from_file(image_name)
-    else:
-        ext = image_name.suffix
-
-    # Загружаем файл
-    with NamedTemporaryFile('wb', suffix=ext) as image_file:
+    # Получаем расширение изображения
+    ext = get_file_extension(image.filename)
+    with NamedTemporaryFile(suffix=ext) as image_file:
         download_status = await download_file(image_file, image)
         match download_status:
             case RecognitionStatus.DOWNLOAD_ERROR as error:
@@ -177,13 +170,8 @@ async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | 
     if archive.content_type not in ALLOWED_ARCHIVE_MIMES:
         raise TemplateException.UNSUPPORTED_MIME_TYPE.value
 
-    # Получаем расширение из файла
-    archive_name = Path(archive.filename)
-    if not archive_name.suffix:
-        ext = puremagic.from_file(archive_name)
-    else:
-        ext = archive_name.suffix
-
+    # Получаем расширение архива
+    ext = get_file_extension(archive.filename)
     with NamedTemporaryFile(suffix=ext) as archive_file:
         download_status = await download_file(archive_file, archive)
         match download_status:
@@ -198,8 +186,35 @@ async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | 
                 with TemporaryDirectory() as extracted_images_dir:
                     patoolib.extract_archive(archive_file.name, outdir=extracted_images_dir)
 
-                    # Записываем в видеофайл все изображения из извлеченного архива
-                    images = []
+                    bboxed_image_paths: list[Path] = []
+                    first_images: list[str] = []
+                    # Итерируемся по изображениям в извелеченном архиве
                     for file in Path(extracted_images_dir).iterdir():
-                        if file.is_file() and file.suffix in SUPPORTED_IMAGE_TYPES:
-                            images.append(...)
+                        file_ext = file.suffix.lower()
+                        # Проверяем расширение изображения
+                        if file.is_file() and file_ext in SUPPORTED_IMAGE_TYPES:
+                            output_path = get_output_archives_dpath() / f'{get_uuid4()}{file_ext}'
+                            model.detect_image(file, output_path)
+                            # Отдавать пользователю исходный набор фото
+                            # или только фото с обнаруженным барсом?
+                            bboxed_image_paths.append(output_path)
+                            # Заполняем список ссылок для превью архива в фронтенде
+                            if len(first_images) < ARCHIVE_COLLAGE_SIZE:
+                                relative_image_path = str(output_path.relative_to(get_project_root()))
+                                bboxed_image_link = urljoin(ROOT_LINK, relative_image_path)
+                                first_images.append(bboxed_image_link)
+
+                    # ???
+                    # if TemplateException(bboxed_image_paths) == 0:
+                    #     return TEMPLATE_RESPONSES[RecognitionStatus.NO_IRBIS_FOUND]
+
+                    output_archive_path = get_output_archives_dpath() / f'{get_uuid4()}.zip'
+                    patoolib.create_archive(str(output_archive_path), bboxed_image_paths)
+                    relative_archive_path = str(output_archive_path.relative_to(get_project_root()))
+                    output_archive_link = urljoin(ROOT_LINK, relative_archive_path)
+
+                    return MultiImageSuccessResponse(
+                        status=RecognitionStatus.IRBIS_FOUND,
+                        link=output_archive_link,
+                        first_images=first_images
+                    )

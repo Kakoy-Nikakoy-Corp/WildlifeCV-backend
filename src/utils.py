@@ -1,7 +1,9 @@
+from pathlib import Path
 from typing import Final, IO
 from uuid import uuid4
 
 from fastapi import UploadFile
+import puremagic
 from loguru import logger
 import torch
 import torchvision.transforms.v2.functional as f
@@ -46,6 +48,19 @@ async def download_file(io: IO[bytes], file: UploadFile) -> RecognitionStatus:
         # контекстный менеджер корректно закрывается
         logger.opt(exception=True).error(e)
         return RecognitionStatus.DOWNLOAD_ERROR
+
+
+def get_file_extension(filename: str) -> str:
+    """
+    Возвращает расширение файла (с точкой)
+
+    Parameters:
+        filename: Имя файла
+    """
+    file_path = Path(filename)
+    if file_path.suffix is None:
+        return puremagic.from_file(file_path)
+    return file_path.suffix
 
 
 def calculate_letterbox_params(orig_shape: torch.Size | tuple[int, int], target_size: int = 640) -> LetterboxParams:

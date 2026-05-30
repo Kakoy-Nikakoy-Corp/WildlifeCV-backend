@@ -66,7 +66,7 @@ class ImageSuccessResponse(TypedDict):
 
     Parameters:
         status: Значение RecognitionStatus
-        link: Путь к обработанному изображению
+        link: Ссылка на обработанное изображение
     """
     status: RecognitionStatus
     link: str
@@ -75,13 +75,15 @@ class ImageSuccessResponse(TypedDict):
 class MultiImageSuccessResponse(TypedDict):
     """
     Успешный ответ эндпоинта обработки архивов с изображениями.
+
+    Parameters:
+        status: Значение RecognitionStatus
+        link: Ссылка на обработанный архив
+        first_images: Ссылки на первые картинки из архива (4 или меньше)
     """
     status: RecognitionStatus
-    archive_link: str
-    image_1: str
-    image_2: str
-    image_3: str
-    image_4: str
+    link: str
+    first_images: list[str]
 
 
 @dataclass(slots=True, frozen=True)
@@ -149,6 +151,4 @@ class ModelProtocol(Protocol):
         ...
 
     # Обработка картинок в архиве:
-    #   - Собираем картинки в объект видео
-    #   - Сохраняем видео на диск
-    #   - Юзаем detect_video
+    #   - Картинки отправляются в detect_image
