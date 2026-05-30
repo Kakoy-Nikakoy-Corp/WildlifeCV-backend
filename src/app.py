@@ -6,6 +6,7 @@ from urllib.parse import urljoin
 import patoolib
 from fastapi import FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.model import Model
@@ -61,6 +62,18 @@ ALLOWED_ARCHIVE_MIMES = {
 # > jpeg, png, gif and webp
 SUPPORTED_IMAGE_TYPES: Final = {'jpg', 'jpeg', 'png'}
 ARCHIVE_COLLAGE_SIZE: Final = 4
+
+
+@app.get("/output/{filename}")
+async def download_video(filename: str) -> FileResponse:
+    file_path = get_output_dpath() / filename
+
+    if 'videos' in filename:
+        return FileResponse(
+            path=file_path,
+            filename=filename,
+            media_type="video/mp4"
+        )
 
 
 @app.post("/recognise/video/")
