@@ -1,10 +1,13 @@
 from collections import deque
-from typing import Iterator
+from typing import Any, Generator, Iterator
 
+import pytest
+from pytest_mock import MockerFixture
 from timecode import Timecode
-from torch import Tensor
+from torch import zeros
 
 from src.types import ProcessedFrame, TimeInterval, ModelPrediction
+
 
 def rolling_window(
     frames: Iterator[ProcessedFrame],
@@ -65,19 +68,71 @@ def rolling_window(
     return encoder_input
 
 
+def get_frame_stream(confs: list[float], fps: int = 30):
+    """
+    Эмулирует 'поток' кадров из видео.
 
-def test_rolling_window_behaviour():
-    sut = rolling_window
+    Parameters:
+        confs: Список уверенностей на кадрах.
+        fps: FPS 'видео'
+    """
+    img = zeros(1)
+    framerate = str(fps)
+    video_stream_len = len(confs)
+    for i, conf in zip(range(1, video_stream_len+1), confs):
+        yield ProcessedFrame(i, Timecode(framerate, frames=i), ModelPrediction(conf, img))
 
-    frames = [
-        ProcessedFrame(1, Timecode('30', frames=1), ModelPrediction(0.8, Tensor())),
-        ProcessedFrame(2, Timecode('30', frames=2), ModelPrediction(0.8, Tensor())),
-        ProcessedFrame(3, Timecode('30', frames=3), ModelPrediction(0.8, Tensor())),
-        ProcessedFrame(4, Timecode('30', frames=4), ModelPrediction(0.8, Tensor()))
+
+def get_frame_list(conf_pairs: list[tuple[int, float]], fps: int =30) -> list[ProcessedFrame]:
+    """
+    Эмулирует возврат 'видео' как набор кадров.
+    Нужен, чтобы сгенерировать ожидаемый дамп.
+
+    Parameters:
+        conf_pairs: Список из пар вида 'номер-кадра, conf'
+        fps: FPS 'видео'
+    """
+    img = zeros(1)
+    framerate = str(fps)
+
+    frame_nums = [num for num, conf in conf_pairs]
+    confs = [conf for num, conf in conf_pairs]
+
+    frames = []
+    for i, conf in zip(frame_nums, confs, strict=True):
+        frame = ProcessedFrame(i, Timecode(framerate, frames=i), ModelPrediction(conf, img))
+        frames.append(frame)
+    return frames
+
+
+def test_rolling_window_behaviour(mocker: MockerFixture):
+    # Управление настройками видео.
+    # Каждая уверенность - это кадр
+    # Список уверенностей - это как бы видео
+    FPS = 30
+    confs = [
+        0.8,
+        0.6,
+        0.8,
+        0.2
+    ]
+    # Очень простое представление ожидаемых кадров в дампе.
+    # Пары вида 'Номер кадра + уверенность в кадре'
+    expected_conf_pairs = [
+        (1, 0.8),
+        (2, 0.6),
+        (3, 0.8),
+        (4, 0.2)
     ]
 
-    dump_frames = rolling_window(
-        frames, 30, len(frames), window_coef=0.1, window_threshold=0.8
+    frame_amount = len(confs)
+    frame_iterator = get_frame_stream(confs=confs, fps=FPS)
+    expected_dump = get_frame_list(expected_conf_pairs, FPS)
+    sut = rolling_window
+
+    frames_dump = sut(
+        frame_iterator, FPS, frame_amount,
+        window_coef=0.1, window_threshold=0.8
     )
 
-    assert dump_frames == frames[:3]
+    assert frames_dump == expected_dump
