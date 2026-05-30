@@ -1,21 +1,27 @@
 from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Final
-from uuid import uuid4
 from urllib.parse import urljoin
-from tempfile import NamedTemporaryFile
 
-from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi import FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from jinja2.ext import i18n
+import patoolib
 import puremagic
-from sympy.external.ntheory import j
 
 from src.model import Model
-from src.paths import get_output_dpath, get_output_videos_dpath, get_output_images_dpath, get_output_archives_dpath, get_project_root
-from src.types import RecognitionStatus, LoadingErrorResponse
-from src.types import VideoSuccessResponse, VideoRecognitionOutput
-from src.types import ImageSuccessResponse, MultiImageSuccessResponse
-from src.utils import download_file, MAX_SIZE_MIB
+from src.paths import (
+    get_output_dpath, get_output_videos_dpath, get_output_images_dpath,
+    get_output_archives_dpath, get_project_root
+)
+from src.templates import TemplateException, TEMPLATE_RESPONSES
+from src.types import (
+    RecognitionStatus, LoadingErrorResponse,
+    VideoSuccessResponse, VideoRecognitionOutput,
+    ImageSuccessResponse, MultiImageSuccessResponse
+)
+from src.utils import download_file, get_uuid4, MAX_SIZE_MIB
 
 app = FastAPI()
 model = Model()
@@ -46,6 +52,7 @@ ALLOWED_ARCHIVE_MIMES = {
     'application/rar',
     'application/vnd.rar',
 }
+SUPPORTED_IMAGE_TYPES = {'jpg', 'jpeg', 'png'}
 
 
 @app.post("/recognise/video/")
@@ -58,10 +65,10 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingEr
     """
 
     if video.filename is None:
-        raise HTTPException(422, detail='Сервис не обрабатывает файл без имени :(')
+        raise TemplateException.NO_FILENAME.value
 
     if video.content_type not in ALLOWED_VIDEO_MIMES:
-        raise HTTPException(400, detail='Поддерживаются только видео, фото и архивы с фото')
+        raise TemplateException.UNSUPPORTED_MIME_TYPE.value
 
     # Получаем расширение файла
     video_name = Path(video.filename)
@@ -75,20 +82,14 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingEr
 
         match download_status:
             case RecognitionStatus.DOWNLOAD_ERROR as error:
-                return LoadingErrorResponse(
-                    status=error,
-                    detail="Во время загрузки файла произошла ошибка :("
-                )
+                return TEMPLATE_RESPONSES[error]
 
             case RecognitionStatus.SIZE_LIMIT as error:
-                return LoadingErrorResponse(
-                    status=error,
-                    detail=f"Файл слишком большой, лимит - {MAX_SIZE_MIB:.2f}"
-                )
+                return TEMPLATE_RESPONSES[error]
 
             case _:  # case IRBIS_FOUND
                 # Собираем путь для сохранения видео от модели и вызываем модель
-                output_name = f'{uuid4()}.mp4'
+                output_name = f'{get_uuid4()}.mp4'
                 output_path = get_output_videos_dpath() / output_name
                 video_path = Path(video_file.name)
                 timestrings = model.detect_video_intervals(
@@ -99,10 +100,7 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingEr
                     batch_size=32
                 )
                 if not timestrings:
-                    return LoadingErrorResponse(
-                        status=RecognitionStatus.NO_IRBIS_FOUND,
-                        detail="Снежный барс не обнаружен :("
-                    )
+                    return TEMPLATE_RESPONSES[RecognitionStatus.NO_IRBIS_FOUND]
 
                 relative_output_path = str(output_path.relative_to(get_project_root()))
                 bboxed_video_link = urljoin(ROOT_LINK, relative_output_path)
@@ -125,10 +123,10 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingEr
     """
 
     if image.filename is None:
-        raise HTTPException(422, detail='Сервис не обрабатывает файл без имени :(')
+        raise TemplateException.NO_FILENAME.value
 
     if image.content_type not in ALLOWED_IMAGE_MIMES:
-        raise HTTPException(status_code=400, detail='Поддерживаются только видео, фото и архивы с фото!')
+        raise TemplateException.UNSUPPORTED_MIME_TYPE.value
 
     # Получаем суффикс из файла
     image_name = Path(image.filename)
@@ -142,28 +140,19 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingEr
         download_status = await download_file(image_file, image)
         match download_status:
             case RecognitionStatus.DOWNLOAD_ERROR as error:
-                return LoadingErrorResponse(
-                    status=error,
-                    detail="Во время загрузки файла произошла ошибка :("
-                )
+                return TEMPLATE_RESPONSES[error]
 
             case RecognitionStatus.SIZE_LIMIT as error:
-                return LoadingErrorResponse(
-                    status=error,
-                    detail=f"Файл слишком большой, лимит - {MAX_SIZE_MIB:.2f}"
-                )
+                return TEMPLATE_RESPONSES[error]
 
             case _:
                 # Собираем путь для сохранения видео от модели и вызываем модель
                 image_path = Path(image_file.name)
-                output_name = f'{uuid4()}.jpg'
+                output_name = f'{get_uuid4()}.jpg'
                 output_path = get_output_images_dpath() / output_name
                 is_found = model.detect_image(image_path, output_path)
                 if not is_found:
-                    return LoadingErrorResponse(
-                        status=RecognitionStatus.NO_IRBIS_FOUND,
-                        detail="Снежный барс не обнаружен :("
-                    )
+                    return TEMPLATE_RESPONSES[RecognitionStatus.NO_IRBIS_FOUND]
 
                 relative_output_path = str(output_path.relative_to(get_project_root()))
                 bboxed_image_link = urljoin(ROOT_LINK, relative_output_path)
@@ -183,17 +172,34 @@ async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | 
     """
 
     if archive.filename is None:
-        raise HTTPException(422, detail='Сервис не обрабатывает файл без имени :(')
+        raise TemplateException.NO_FILENAME.value
 
     if archive.content_type not in ALLOWED_ARCHIVE_MIMES:
-        raise HTTPException(status_code=400, detail='Поддерживаются только видео, фото и архивы с фото!')
+        raise TemplateException.UNSUPPORTED_MIME_TYPE.value
 
-    # Получаем суффикс из файла
+    # Получаем расширение из файла
     archive_name = Path(archive.filename)
     if not archive_name.suffix:
         ext = puremagic.from_file(archive_name)
     else:
         ext = archive_name.suffix
 
-    # FIXME!!!
-    ...
+    with NamedTemporaryFile(suffix=ext) as archive_file:
+        download_status = await download_file(archive_file, archive)
+        match download_status:
+            case RecognitionStatus.DOWNLOAD_ERROR as error:
+                return TEMPLATE_RESPONSES[error]
+
+            case RecognitionStatus.SIZE_LIMIT as error:
+                return TEMPLATE_RESPONSES[error]
+
+            case _:
+                # Извлекаем архив в temp-директорию
+                with TemporaryDirectory() as extracted_images_dir:
+                    patoolib.extract_archive(archive_file.name, outdir=extracted_images_dir)
+
+                    # Записываем в видеофайл все изображения из извлеченного архива
+                    images = []
+                    for file in Path(extracted_images_dir).iterdir():
+                        if file.is_file() and file.suffix in SUPPORTED_IMAGE_TYPES:
+                            images.append(...)

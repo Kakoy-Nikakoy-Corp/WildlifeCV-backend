@@ -1,6 +1,6 @@
 version = 1
-revision = 3
-requires-python = "==3.12.*"
+revision = 2
+requires-python = ">=3.12.0, <3.13"
 resolution-markers = [
     "platform_machine != 's390x' and sys_platform == 'win32'",
     "platform_machine == 's390x' and sys_platform == 'win32'",
@@ -739,6 +739,15 @@ wheels = [
 ]
 
 [[package]]
+name = "patool"
+version = "4.0.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/2c/e2/215c7d5efd40cf9b33b4943055b47c22cb0851383facdaedd919e30de90a/patool-4.0.5.tar.gz", hash = "sha256:1c8bbbbe1f421181bf7055ada975befb024c1677449e9d36f42bb45ac69f8b4c", size = 2011328, upload-time = "2026-05-18T08:56:14.929Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/61/50/cb792aaf25a8f42f5738dafb3030a1243d484ab366ff321ebcd45dfcfc12/patool-4.0.5-py2.py3-none-any.whl", hash = "sha256:9413a114c7aedf2263f151a56798055a593de671ef0a9ef94870284ad21818fb", size = 101399, upload-time = "2026-05-18T08:56:16.465Z" },
+]
+
+[[package]]
 name = "pillow"
 version = "12.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1368,6 +1377,7 @@ dependencies = [
     { name = "fastapi", extra = ["standard"] },
     { name = "loguru" },
     { name = "numpy" },
+    { name = "patool" },
     { name = "pillow" },
     { name = "puremagic" },
     { name = "pydantic" },
@@ -1387,6 +1397,7 @@ requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.136.1" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "numpy", specifier = ">=2.4.4" },
+    { name = "patool", specifier = ">=4.0.5" },
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "puremagic", specifier = ">=2.2.0" },
     { name = "pydantic", specifier = ">=2.13.4" },

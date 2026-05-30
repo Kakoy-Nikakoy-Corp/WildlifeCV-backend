@@ -1,7 +1,8 @@
 from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TypedDict
+from pathlib import Path
+from typing import Protocol, TypedDict
 
 import torch
 from timecode import Timecode
@@ -33,6 +34,18 @@ class RecognitionStatus(StrEnum):
     SIZE_LIMIT = "SIZE_LIMIT"
     DOWNLOAD_ERROR = "DOWNLOAD_ERROR"
     NO_IRBIS_FOUND = "NO_IRBIS_FOUND"
+
+
+class LoadingErrorResponse(TypedDict):
+    """
+    Формат ответа эндпоинта, если на нем выброшена ошибка.
+
+    Parameters:
+        status: Значения RecognitionStatus
+        detail: Комментарий к ошибке
+    """
+    status: RecognitionStatus
+    detail: str
 
 
 class VideoSuccessResponse(TypedDict):
@@ -69,18 +82,6 @@ class MultiImageSuccessResponse(TypedDict):
     image_2: str
     image_3: str
     image_4: str
-
-
-class LoadingErrorResponse(TypedDict):
-    """
-    Формат ответа эндпоинта, если на нем выброшена ошибка.
-
-    Parameters:
-        status: Значения RecognitionStatus
-        detail: Комментарий к ошибке
-    """
-    status: RecognitionStatus
-    detail: str
 
 
 @dataclass(slots=True, frozen=True)
@@ -125,23 +126,29 @@ class TimeInterval:
         return f"{self.start}-{self.end}"
 
 
-# class ModelProtocol(Protocol):
-#     def detect_video_timeintervals(
-#         self,
-#         video_path: Path,
-#         output_path: Path,
-#         window_coef: float,
-#         threshold: float,
-#         smoothing_interval: float,
-#         gap: int,
-#         batch_size: int
-#     ) -> VideoRecognitionOutput:
-#         ...
-#
-#     def detect_image(self, image_path: Path) -> Path:
-#         ...
-#
-#     # Обработка картинок в архиве:
-#     #   - Собираем картинки в объект видео
-#     #   - Сохраняем видео на диск
-#     #   - Юзаем detect_video
+class ModelProtocol(Protocol):
+    def detect_video_timeintervals(
+        self,
+        video_path: Path,
+        output_path: Path,
+        window_coef: float = 1.5,
+        window_threshold: float = 0.4,
+        threshold: float = 0.25,
+        smoothing_interval: float = 2,
+        gap: int = 2,
+        batch_size: int = 16
+    ) -> list[str]:
+        ...
+
+    def detect_image(
+        self,
+        image_path: Path,
+        output_path: Path,
+        threshold: float = 0.25
+    ) -> bool:
+        ...
+
+    # Обработка картинок в архиве:
+    #   - Собираем картинки в объект видео
+    #   - Сохраняем видео на диск
+    #   - Юзаем detect_video

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from torch import cuda
 
+
 def fixdir(func: Callable[[], Path]):
     """Создает директорию, если её не существует."""
     def wrapper():
