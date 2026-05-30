@@ -3,24 +3,28 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Final
 from urllib.parse import urljoin
 
+import patoolib
 from fastapi import FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import patoolib
 
 from src.model import Model
 from src.paths import (
-    get_output_dpath, get_output_videos_dpath, get_output_images_dpath,
-    get_output_archives_dpath, get_project_root
+    get_output_archives_dpath,
+    get_output_dpath,
+    get_output_images_dpath,
+    get_output_videos_dpath,
+    get_project_root,
 )
-from src.templates import TemplateException, TEMPLATE_RESPONSES
+from src.templates import TEMPLATE_RESPONSES, TemplateException
 from src.types import (
-    RecognitionStatus, LoadingErrorResponse,
-    VideoSuccessResponse, VideoRecognitionOutput,
-    ImageSuccessResponse, MultiImageSuccessResponse
+    ImageSuccessResponse,
+    LoadingErrorResponse,
+    MultiImageSuccessResponse,
+    RecognitionStatus,
+    VideoSuccessResponse,
 )
-from src.utils import download_file, get_uuid4, get_file_extension
-
+from src.utils import download_file, get_file_extension, get_uuid4
 
 app = FastAPI()
 model = Model()
@@ -105,10 +109,8 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingEr
                 bboxed_video_link = urljoin(ROOT_LINK, relative_output_path)
                 return VideoSuccessResponse(
                     status=RecognitionStatus.IRBIS_FOUND,
-                    data=VideoRecognitionOutput(
-                        timestrings=timestrings,
-                        link=bboxed_video_link
-                    )
+                    timestrings=timestrings,
+                    link=bboxed_video_link
                 )
 
 
@@ -187,6 +189,7 @@ async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | 
                     patoolib.extract_archive(archive_file.name, outdir=extracted_images_dir)
 
                     bboxed_image_paths: list[Path] = []
+                    is_any_irbis = False
                     first_images: list[str] = []
                     # Итерируемся по изображениям в извелеченном архиве
                     for file in Path(extracted_images_dir).iterdir():
@@ -194,7 +197,7 @@ async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | 
                         # Проверяем расширение изображения
                         if file.is_file() and file_ext in SUPPORTED_IMAGE_TYPES:
                             output_path = get_output_archives_dpath() / f'{get_uuid4()}{file_ext}'
-                            model.detect_image(file, output_path)
+                            is_any_irbis = model.detect_image(file, output_path) or is_any_irbis
                             # Отдавать пользователю исходный набор фото
                             # или только фото с обнаруженным барсом?
                             bboxed_image_paths.append(output_path)
@@ -204,9 +207,13 @@ async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | 
                                 bboxed_image_link = urljoin(ROOT_LINK, relative_image_path)
                                 first_images.append(bboxed_image_link)
 
-                    # ???
-                    # if TemplateException(bboxed_image_paths) == 0:
-                    #     return TEMPLATE_RESPONSES[RecognitionStatus.NO_IRBIS_FOUND]
+                    # FIXME!!!!
+                    if not is_any_irbis or not first_images:
+                        return TEMPLATE_RESPONSES[RecognitionStatus.NO_IRBIS_FOUND]
+
+                    while len(first_images) < ARCHIVE_COLLAGE_SIZE:
+                        first_images.append(first_images[-1])
+
 
                     output_archive_path = get_output_archives_dpath() / f'{get_uuid4()}.zip'
                     patoolib.create_archive(str(output_archive_path), bboxed_image_paths)

@@ -8,19 +8,6 @@ import torch
 from timecode import Timecode
 
 
-@dataclass(slots=True)
-class VideoRecognitionOutput:
-    """
-    Результат работы модели на видео.
-
-    Parameters:
-        timestrings: Список таймкодов (длинных)
-        link: Путь до видео с bbox'ами
-    """
-    timestrings: list[str]
-    link: str
-
-
 class RecognitionStatus(StrEnum):
     """
     Статус ответа эндпоинта.
@@ -54,10 +41,12 @@ class VideoSuccessResponse(TypedDict):
 
     Parameters:
         status: Значение RecognitionStatus
-        data: Результат от модели
+        timestrings: Список таймкодов (длинных)
+        link: Путь до видео с bbox'ами
     """
     status: RecognitionStatus
-    data: VideoRecognitionOutput
+    timestrings: list[str]
+    link: str
 
 
 class ImageSuccessResponse(TypedDict):
