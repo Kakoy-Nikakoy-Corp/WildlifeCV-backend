@@ -68,7 +68,7 @@ def rolling_window(
     return encoder_input
 
 
-def get_frame_stream(confs: list[float], fps: int = 30):
+def get_frame_stream(confs: list[float], fps: int = 30) -> Generator[ProcessedFrame, Any, None]:
     """
     Эмулирует 'поток' кадров из видео.
 
@@ -83,7 +83,7 @@ def get_frame_stream(confs: list[float], fps: int = 30):
         yield ProcessedFrame(i, Timecode(framerate, frames=i), ModelPrediction(conf, img))
 
 
-def get_frame_list(conf_pairs: list[tuple[int, float]], fps: int =30) -> list[ProcessedFrame]:
+def get_frame_list(conf_pairs: list[tuple[int, float]], fps: int = 30) -> list[ProcessedFrame]:
     """
     Эмулирует возврат 'видео' как набор кадров.
     Нужен, чтобы сгенерировать ожидаемый дамп.
