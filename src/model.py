@@ -267,7 +267,7 @@ class Model:
         Returns:
             Наличие барса на изображении.
         """
-        image_tensor = decode_image(str(image_path))
+        image_tensor = decode_image(str(image_path)).to(self.__device)
         pred: ModelPrediction = self.__make_prediction(image_tensor, single=True, threshold=threshold)
         write_jpeg(pred.img, output_path)
         return pred.peak_conf != 0
