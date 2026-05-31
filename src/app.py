@@ -1,6 +1,7 @@
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Final
+from urllib.parse import urljoin
 
 import patoolib
 from fastapi import FastAPI, UploadFile
@@ -14,6 +15,7 @@ from src.paths import (
     get_output_dpath,
     get_output_images_dpath,
     get_output_videos_dpath,
+    get_project_root,
 )
 from src.templates import TEMPLATE_RESPONSES, TemplateException
 from src.types import (
@@ -28,6 +30,7 @@ from src.utils import (
     get_file_extension,
     get_uuid4,
     register_link_on_file,
+    ROOT_LINK
 )
 
 app = FastAPI()
@@ -235,11 +238,12 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                         is_any_irbis = model.detect_image(extracted_file, output_path) or is_any_irbis
                         # Отдаем пользователю исходный набор фото,
                         # сохраняем в результат **все** фотографии
-                        output_relative_path = output_path.relative_to(get_output_archives_dpath())
-                        bboxed_image_paths.append(output_relative_path)
+                        output_from_archive_path = output_path.relative_to(get_output_archives_dpath())
+                        bboxed_image_paths.append(output_from_archive_path)
                         # Заполняем список ссылок для превью архива в фронтенде
                         if len(collage_images) < ARCHIVE_COLLAGE_SIZE:
-                            bboxed_image_link = register_link_on_file(output_relative_path)
+                            output_relative_path = output_path.relative_to(get_project_root())
+                            bboxed_image_link = urljoin(ROOT_LINK, str(output_relative_path))
                             collage_images.append(bboxed_image_link)
 
                     logger.debug(f"""
