@@ -55,6 +55,7 @@ ALLOWED_ARCHIVE_MIMES = {
     'application/x-rar',
     'application/rar',
     'application/vnd.rar',
+    'multipart/form-data'
 }
 
 # `torchvision.io.decode_image` documentation page:
