@@ -90,7 +90,7 @@ async def download_video(folder: str, filename: str) -> FileResponse:
 
 
 @app.post("/recognise/video/")
-async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingErrorResponse:
+async def recognise_video(file: UploadFile) -> VideoSuccessResponse | LoadingErrorResponse:
     """
     Запускает пайплайн на видеофайле.
 
@@ -98,16 +98,16 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingEr
         video (UploadFile): Видеофайл
     """
 
-    if video.filename is None:
+    if file.filename is None:
         raise TemplateException.NO_FILENAME.value
 
-    if video.content_type not in ALLOWED_VIDEO_MIMES:
+    if file.content_type not in ALLOWED_VIDEO_MIMES:
         raise TemplateException.UNSUPPORTED_MIME_TYPE.value
 
     # Получаем расширение файла
-    ext = get_file_extension(video.filename)
+    ext = get_file_extension(file.filename)
     with NamedTemporaryFile(suffix=ext, delete_on_close=False) as video_file:
-        download_status = await download_file(video_file, video)
+        download_status = await download_file(video_file, file)
         video_file.close()
 
         match download_status:
@@ -141,7 +141,7 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingEr
 
 
 @app.post("/recognise/image/")
-async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingErrorResponse:
+async def recognise_image(file: UploadFile) -> ImageSuccessResponse | LoadingErrorResponse:
     """
     Запускает пайплайн на изображении.
 
@@ -149,17 +149,15 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingEr
         image (UploadFile): Изображение
     """
 
-    if image.filename is None:
+    if file.filename is None:
         raise TemplateException.NO_FILENAME.value
 
-    if image.content_type not in ALLOWED_IMAGE_MIMES:
+    if file.content_type not in ALLOWED_IMAGE_MIMES:
         raise TemplateException.UNSUPPORTED_MIME_TYPE.value
 
-    # Получаем расширение изображения
-    ext = get_file_extension(image.filename)
-    # Загружаем файл
+    ext = get_file_extension(file.filename)
     with NamedTemporaryFile('wb', suffix=ext, delete_on_close=False) as image_file:
-        download_status = await download_file(image_file, image)
+        download_status = await download_file(image_file, file)
         image_file.close()
 
         match download_status:
@@ -186,7 +184,7 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingEr
 
 
 @app.post("/recognise/multi-image")
-async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | LoadingErrorResponse:
+async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | LoadingErrorResponse:
     """
     Запускает пайплайн на архиве изображений.
 
@@ -194,16 +192,16 @@ async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | 
         image (UploadFile): Архив
     """
 
-    if archive.filename is None:
+    if file.filename is None:
         raise TemplateException.NO_FILENAME.value
 
-    if archive.content_type not in ALLOWED_ARCHIVE_MIMES:
+    if file.content_type not in ALLOWED_ARCHIVE_MIMES:
         raise TemplateException.UNSUPPORTED_MIME_TYPE.value
 
     # Получаем расширение архива
-    ext = get_file_extension(archive.filename)
+    ext = get_file_extension(file.filename)
     with NamedTemporaryFile(suffix=ext, delete_on_close=False) as archive_file:
-        download_status = await download_file(archive_file, archive)
+        download_status = await download_file(archive_file, file)
         archive_file.close()
 
         match download_status:
@@ -222,13 +220,13 @@ async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | 
                     bboxed_image_paths: list[Path] = []
                     collage_images: list[str] = []
                     # Итерируемся по изображениям в извелеченном архиве
-                    for file in Path(extracted_images_dir).glob('**/*'):
-                        file_ext = file.suffix.lower()
+                    for extracted_file in Path(extracted_images_dir).glob('**/*'):
+                        file_ext = extracted_file.suffix.lower()
                         if file_ext not in SUPPORTED_IMAGE_TYPES:
                             continue
 
                         output_path = get_output_archives_dpath() / f'{get_uuid4()}{file_ext}'
-                        is_any_irbis = model.detect_image(file, output_path) or is_any_irbis
+                        is_any_irbis = model.detect_image(extracted_file, output_path) or is_any_irbis
                         # Отдаем пользователю исходный набор фото,
                         # сохраняем в результат **все** фотографии
                         bboxed_image_paths.append(output_path)
