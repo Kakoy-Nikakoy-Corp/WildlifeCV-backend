@@ -6,6 +6,7 @@ import patoolib
 from fastapi import FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from loguru import logger
 
 from src.model import Model
 from src.paths import (
@@ -30,6 +31,7 @@ from src.utils import (
 )
 
 app = FastAPI()
+logger.add('backend_inf.log', level='INFO')
 model = Model()
 
 origins = [
@@ -195,6 +197,8 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
 
     if file.filename is None:
         raise TemplateException.NO_FILENAME.value
+
+    logger.debug(f"Content type: {file.content_type}")
 
     if file.content_type not in ALLOWED_ARCHIVE_MIMES:
         raise TemplateException.UNSUPPORTED_MIME_TYPE.value
