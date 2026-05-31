@@ -235,14 +235,17 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                             continue
 
                         output_path = get_output_archives_dpath() / f'{get_uuid4()}{file_ext}'
+                        logger.debug(f"Absolute file path: {output_path}")
                         is_any_irbis = model.detect_image(extracted_file, output_path) or is_any_irbis
                         # Отдаем пользователю исходный набор фото,
                         # сохраняем в результат **все** фотографии
                         output_from_archive_path = output_path.relative_to(get_output_archives_dpath())
+                        logger.debug(f"From-archive path: {output_from_archive_path}")
                         bboxed_image_paths.append(output_from_archive_path)
                         # Заполняем список ссылок для превью архива в фронтенде
                         if len(collage_images) < ARCHIVE_COLLAGE_SIZE:
                             output_relative_path = output_path.relative_to(get_project_root())
+                            logger.debug(f"From-project path: {output_relative_path}")
                             bboxed_image_link = urljoin(ROOT_LINK, str(output_relative_path))
                             collage_images.append(bboxed_image_link)
 
@@ -260,6 +263,8 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
 
                     # Собираем свой архив с обработанными изображениями
                     output_archive_path = get_output_archives_dpath() / f'{get_uuid4()}.zip'
+                    logger.debug(f"Output archive path: {output_archive_path}")
+                    logger.debug(f"Bboxed_image_paths:\n{bboxed_image_paths}")
                     patoolib.create_archive(str(output_archive_path), bboxed_image_paths)
                     # Удаляем обработанные изображения, исключая фотки для коллажа
                     for path in bboxed_image_paths:
