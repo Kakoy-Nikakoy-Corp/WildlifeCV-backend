@@ -183,7 +183,7 @@ async def recognise_image(file: UploadFile) -> ImageSuccessResponse | LoadingErr
                 )
 
 
-@app.post("/recognise/multi-image")
+@app.post("/recognise/multi-image/")
 async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | LoadingErrorResponse:
     """
     Запускает пайплайн на архиве изображений.
