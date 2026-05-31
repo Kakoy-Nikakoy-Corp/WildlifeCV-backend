@@ -234,12 +234,12 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                         if file_ext not in SUPPORTED_IMAGE_TYPES:
                             continue
 
-                        output_path = get_output_archives_dpath() / f'{get_uuid4()}{file_ext}'
+                        output_path = get_output_images_dpath() / f'{get_uuid4()}{file_ext}'
                         logger.debug(f"Absolute file path: {output_path}")
                         is_any_irbis = model.detect_image(extracted_file, output_path) or is_any_irbis
                         # Отдаем пользователю исходный набор фото,
                         # сохраняем в результат **все** фотографии
-                        output_from_archive_path = output_path.relative_to(get_output_archives_dpath())
+                        output_from_archive_path = output_path.relative_to(get_output_images_dpath())
                         logger.debug(f"From-archive path: {output_from_archive_path}")
                         bboxed_image_paths.append(output_from_archive_path)
                         # Заполняем список ссылок для превью архива в фронтенде
@@ -268,10 +268,10 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                     patoolib.create_archive(
                         str(output_archive_path),
                         # Проблема в СWD
-                        ['output/archives/' + str(path) for path in bboxed_image_paths]
+                        ['output/images/' + str(path) for path in bboxed_image_paths]
                     )
                     # Удаляем обработанные изображения, исключая фотки для коллажа
-                    for path in [Path('output/archives') / path for path in bboxed_image_paths]:
+                    for path in [Path('output/images') / path for path in bboxed_image_paths]:
                         if path not in collage_images:
                             path.unlink()
 

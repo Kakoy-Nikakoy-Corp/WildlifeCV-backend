@@ -15,7 +15,7 @@ from src.paths import get_project_root
 from src.types import LetterboxParams, RecognitionStatus
 
 
-ROOT_LINK: Final = 'https://irbis.wild1.net'
+ROOT_LINK: Final = 'https://api.irbis.wild1.net'
 MAX_SIZE_MIB: Final = 500
 CHUNK_SIZE: Final = 8 * 1024 * 1024  # 8 мебибайт
 CHARS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', ':', ';']
