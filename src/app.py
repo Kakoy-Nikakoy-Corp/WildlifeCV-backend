@@ -1,7 +1,6 @@
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Final
-from urllib.parse import urljoin
 
 import patoolib
 from fastapi import FastAPI, UploadFile
@@ -14,7 +13,6 @@ from src.paths import (
     get_output_dpath,
     get_output_images_dpath,
     get_output_videos_dpath,
-    get_project_root,
 )
 from src.templates import TEMPLATE_RESPONSES, TemplateException
 from src.types import (
@@ -24,7 +22,12 @@ from src.types import (
     RecognitionStatus,
     VideoSuccessResponse,
 )
-from src.utils import download_file, get_file_extension, get_uuid4
+from src.utils import (
+    download_file,
+    get_file_extension,
+    get_uuid4,
+    register_link_on_file,
+)
 
 app = FastAPI()
 model = Model()
@@ -42,7 +45,6 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-ROOT_LINK: Final = 'https://api.irbis.wild1.net'
 ALLOWED_VIDEO_MIMES = {'video/mp4', 'video/x-matroska', 'video/matroska'}
 ALLOWED_IMAGE_MIMES = {'image/jpeg', 'image/png'}
 ALLOWED_ARCHIVE_MIMES = {
@@ -65,13 +67,26 @@ ARCHIVE_COLLAGE_SIZE: Final = 4
 @app.get("/output/{folder}/{filename}")
 async def download_video(folder: str, filename: str) -> FileResponse:
     file_path = get_output_dpath() / folder / filename
+    if not file_path.exists():
+        raise TemplateException.NOT_FOUND.value
 
-    if folder == 'videos':
-        return FileResponse(
-            path=file_path,
-            filename=filename,
-            media_type="video/mp4",
-        )
+    match folder:
+        case 'videos':
+            media_type = "video/mp4"
+        case 'images':
+            media_type = "image/jpeg"
+        case 'archives':
+            media_type = "application/zip"
+        # Этот кейс отлавливается проверкой на существование пути,
+        # но без него media_type считается 'possibly unbound' :(
+        case _:
+            raise TemplateException.NOT_FOUND.value
+
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        filename=filename
+    )
 
 
 @app.post("/recognise/video/")
@@ -117,8 +132,7 @@ async def recognise_video(video: UploadFile) -> VideoSuccessResponse | LoadingEr
                 if not timestrings:
                     return TEMPLATE_RESPONSES[RecognitionStatus.NO_IRBIS_FOUND]
 
-                relative_output_path = str(output_path.relative_to(get_project_root()))
-                bboxed_video_link = urljoin(ROOT_LINK, relative_output_path)
+                bboxed_video_link = register_link_on_file(output_path)
                 return VideoSuccessResponse(
                     status=RecognitionStatus.IRBIS_FOUND,
                     timestrings=timestrings,
@@ -164,8 +178,7 @@ async def recognise_image(image: UploadFile) -> ImageSuccessResponse | LoadingEr
                 if not is_found:
                     return TEMPLATE_RESPONSES[RecognitionStatus.NO_IRBIS_FOUND]
 
-                relative_output_path = str(output_path.relative_to(get_project_root()))
-                bboxed_image_link = urljoin(ROOT_LINK, relative_output_path)
+                bboxed_image_link = register_link_on_file(output_path)
                 return ImageSuccessResponse(
                     status=RecognitionStatus.IRBIS_FOUND,
                     link=bboxed_image_link
@@ -189,8 +202,10 @@ async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | 
 
     # Получаем расширение архива
     ext = get_file_extension(archive.filename)
-    with NamedTemporaryFile(suffix=ext) as archive_file:
+    with NamedTemporaryFile(suffix=ext, delete_on_close=False) as archive_file:
         download_status = await download_file(archive_file, archive)
+        archive_file.close()
+
         match download_status:
             case RecognitionStatus.DOWNLOAD_ERROR as error:
                 return TEMPLATE_RESPONSES[error]
@@ -203,38 +218,39 @@ async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | 
                 with TemporaryDirectory() as extracted_images_dir:
                     patoolib.extract_archive(archive_file.name, outdir=extracted_images_dir)
 
-                    bboxed_image_paths: list[Path] = []
                     is_any_irbis = False
+                    bboxed_image_paths: list[Path] = []
                     collage_images: list[str] = []
                     # Итерируемся по изображениям в извелеченном архиве
-                    for file in Path(extracted_images_dir).iterdir():
+                    for file in Path(extracted_images_dir).glob('**/*.{jpg,jpeg,png}', case_sensitive=False):
                         file_ext = file.suffix.lower()
-                        # Проверяем расширение изображения
-                        if file.is_file() and file_ext in SUPPORTED_IMAGE_TYPES:
-                            output_path = get_output_archives_dpath() / f'{get_uuid4()}{file_ext}'
-                            is_any_irbis = model.detect_image(file, output_path) or is_any_irbis
-                            # Отдавать пользователю исходный набор фото
-                            # или только фото с обнаруженным барсом?
-                            bboxed_image_paths.append(output_path)
-                            # Заполняем список ссылок для превью архива в фронтенде
-                            if len(collage_images) < ARCHIVE_COLLAGE_SIZE:
-                                relative_image_path = str(output_path.relative_to(get_project_root()))
-                                bboxed_image_link = urljoin(ROOT_LINK, relative_image_path)
-                                collage_images.append(bboxed_image_link)
+                        output_path = get_output_archives_dpath() / f'{get_uuid4()}{file_ext}'
+                        is_any_irbis = model.detect_image(file, output_path) or is_any_irbis
+                        # Отдаем пользователю исходный набор фото,
+                        # сохраняем в результат **все** фотографии
+                        bboxed_image_paths.append(output_path)
+                        # Заполняем список ссылок для превью архива в фронтенде
+                        if len(collage_images) < ARCHIVE_COLLAGE_SIZE:
+                            bboxed_image_link = register_link_on_file(output_path)
+                            collage_images.append(bboxed_image_link)
 
-                    # FIXME!!!! Comment me!!!
                     if not is_any_irbis or not collage_images:
                         return TEMPLATE_RESPONSES[RecognitionStatus.NO_IRBIS_FOUND]
 
+                    # Boostrap'аем коллаж, если он не смог набраться
+                    # из обработанных изображений
                     while len(collage_images) < ARCHIVE_COLLAGE_SIZE:
                         collage_images.append(collage_images[-1])
 
-
+                    # Собираем свой архив с обработанными изображениями
                     output_archive_path = get_output_archives_dpath() / f'{get_uuid4()}.zip'
                     patoolib.create_archive(str(output_archive_path), bboxed_image_paths)
-                    relative_archive_path = str(output_archive_path.relative_to(get_project_root()))
-                    output_archive_link = urljoin(ROOT_LINK, relative_archive_path)
+                    # Удаляем обработанные изображения, исключая фотки для коллажа
+                    for path in bboxed_image_paths:
+                        if path not in collage_images:
+                            path.unlink()
 
+                    output_archive_link = register_link_on_file(output_archive_path)
                     return MultiImageSuccessResponse(
                         status=RecognitionStatus.IRBIS_FOUND,
                         link=output_archive_link,

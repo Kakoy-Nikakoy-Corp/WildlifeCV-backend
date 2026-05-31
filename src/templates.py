@@ -27,6 +27,10 @@ class TemplateException(Enum):
         422,
         'Сервис не обрабатывает файл без имени :('
     )
+    NOT_FOUND = HTTPException(
+        404,
+        "Файла с таким именем нет :("
+    )
 
 
 TEMPLATE_RESPONSES = {

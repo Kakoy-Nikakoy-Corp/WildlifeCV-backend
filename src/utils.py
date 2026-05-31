@@ -1,21 +1,36 @@
 from pathlib import Path
-from typing import Final, IO
+from typing import IO, Final
+from urllib.parse import urljoin
 from uuid import uuid4
 
-from fastapi import UploadFile
 import puremagic
-from loguru import logger
 import torch
 import torchvision.transforms.v2.functional as f
+from fastapi import UploadFile
+from loguru import logger
+from PIL import Image, ImageDraw, ImageFont
 from torchvision.transforms import InterpolationMode
-from PIL import ImageDraw, ImageFont, Image
 
+from src.paths import get_project_root
 from src.types import LetterboxParams, RecognitionStatus
 
 
+ROOT_LINK: Final = 'https://api.irbis.wild1.net'
 MAX_SIZE_MIB: Final = 500
 CHUNK_SIZE: Final = 8 * 1024 * 1024  # 8 мебибайт
 CHARS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', ':', ';']
+
+
+def register_link_on_file(file_path: Path, root_url: str = ROOT_LINK) -> str:
+    """
+    Создает URL-ссылку на файл.
+
+    Parameters:
+        file_path: Путь до файла.
+        root_url: Корневой URL сайта.
+    """
+    relative_file_path = str(file_path.relative_to(get_project_root()))
+    return urljoin(root_url, relative_file_path)
 
 
 def get_uuid4() -> str:
