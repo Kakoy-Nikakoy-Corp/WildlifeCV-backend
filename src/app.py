@@ -241,6 +241,10 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                             bboxed_image_link = register_link_on_file(output_path)
                             collage_images.append(bboxed_image_link)
 
+                    logger.debug(f"""
+                        is_any_irbis: {is_any_irbis}
+                        collage_images: {collage_images}
+                    """)
                     if not is_any_irbis or not collage_images:
                         return TEMPLATE_RESPONSES[RecognitionStatus.NO_IRBIS_FOUND]
 
