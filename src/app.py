@@ -235,10 +235,11 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                         is_any_irbis = model.detect_image(extracted_file, output_path) or is_any_irbis
                         # Отдаем пользователю исходный набор фото,
                         # сохраняем в результат **все** фотографии
-                        bboxed_image_paths.append(output_path)
+                        output_relative_path = output_path.relative_to(get_output_archives_dpath())
+                        bboxed_image_paths.append(output_relative_path)
                         # Заполняем список ссылок для превью архива в фронтенде
                         if len(collage_images) < ARCHIVE_COLLAGE_SIZE:
-                            bboxed_image_link = register_link_on_file(output_path)
+                            bboxed_image_link = register_link_on_file(output_relative_path)
                             collage_images.append(bboxed_image_link)
 
                     logger.debug(f"""
