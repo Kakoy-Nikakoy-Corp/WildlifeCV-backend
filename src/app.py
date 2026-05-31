@@ -63,7 +63,7 @@ ALLOWED_ARCHIVE_MIMES = {
 # `torchvision.io.decode_image` documentation page:
 # > Currently supported image formats are
 # > jpeg, png, gif and webp
-SUPPORTED_IMAGE_TYPES: Final = {'jpg', 'jpeg', 'png'}
+SUPPORTED_IMAGE_TYPES: Final = {'.jpg', '.jpeg', '.png'}
 ARCHIVE_COLLAGE_SIZE: Final = 4
 
 
@@ -228,6 +228,7 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                     for extracted_file in Path(extracted_images_dir).glob('**/*'):
                         logger.debug(f"Extracted file: {extracted_file}")
                         file_ext = extracted_file.suffix.lower()
+                        logger.
                         if file_ext not in SUPPORTED_IMAGE_TYPES:
                             continue
 
