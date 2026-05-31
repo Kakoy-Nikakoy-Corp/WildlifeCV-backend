@@ -226,6 +226,7 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                     collage_images: list[str] = []
                     # Итерируемся по изображениям в извелеченном архиве
                     for extracted_file in Path(extracted_images_dir).glob('**/*'):
+                        logger.debug(f"Extracted file: {extracted_file}")
                         file_ext = extracted_file.suffix.lower()
                         if file_ext not in SUPPORTED_IMAGE_TYPES:
                             continue
