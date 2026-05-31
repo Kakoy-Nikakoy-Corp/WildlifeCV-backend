@@ -228,7 +228,6 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                     for extracted_file in Path(extracted_images_dir).glob('**/*'):
                         logger.debug(f"Extracted file: {extracted_file}")
                         file_ext = extracted_file.suffix.lower()
-                        logger.
                         if file_ext not in SUPPORTED_IMAGE_TYPES:
                             continue
 
