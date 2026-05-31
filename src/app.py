@@ -54,7 +54,7 @@ ALLOWED_ARCHIVE_MIMES = {
     'application/x-zip-compressed',
     'application/x-7z-compressed',
     'application/x-rar-compressed',
-    'applicaton/x-compressed'
+    'application/x-compressed'
     'application/x-rar',
     'application/rar',
     'application/vnd.rar',
