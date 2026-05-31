@@ -265,7 +265,10 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                     output_archive_path = get_output_archives_dpath() / f'{get_uuid4()}.zip'
                     logger.debug(f"Output archive path: {output_archive_path}")
                     logger.debug(f"Bboxed_image_paths:\n{bboxed_image_paths}")
-                    patoolib.create_archive(str(output_archive_path), bboxed_image_paths)
+                    patoolib.create_archive(
+                        str(output_archive_path),
+                        ['output/archives/' + str(path) for path in bboxed_image_paths]
+                    )
                     # Удаляем обработанные изображения, исключая фотки для коллажа
                     for path in bboxed_image_paths:
                         if path not in collage_images:
