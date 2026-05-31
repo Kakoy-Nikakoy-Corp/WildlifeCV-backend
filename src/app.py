@@ -270,7 +270,7 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                         ['output/archives/' + str(path) for path in bboxed_image_paths]
                     )
                     # Удаляем обработанные изображения, исключая фотки для коллажа
-                    for path in bboxed_image_paths:
+                    for path in [Path('output/archives') / path for path in bboxed_image_paths]:
                         if path not in collage_images:
                             path.unlink()
 
