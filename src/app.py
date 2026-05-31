@@ -222,8 +222,11 @@ async def recognise_archive(archive: UploadFile) -> MultiImageSuccessResponse | 
                     bboxed_image_paths: list[Path] = []
                     collage_images: list[str] = []
                     # Итерируемся по изображениям в извелеченном архиве
-                    for file in Path(extracted_images_dir).glob('**/*.{jpg,jpeg,png}', case_sensitive=False):
+                    for file in Path(extracted_images_dir).glob('**/*'):
                         file_ext = file.suffix.lower()
+                        if file_ext not in SUPPORTED_IMAGE_TYPES:
+                            continue
+
                         output_path = get_output_archives_dpath() / f'{get_uuid4()}{file_ext}'
                         is_any_irbis = model.detect_image(file, output_path) or is_any_irbis
                         # Отдаем пользователю исходный набор фото,
