@@ -267,6 +267,7 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                     logger.debug(f"Bboxed_image_paths:\n{bboxed_image_paths}")
                     patoolib.create_archive(
                         str(output_archive_path),
+                        # Проблема в СWD
                         ['output/archives/' + str(path) for path in bboxed_image_paths]
                     )
                     # Удаляем обработанные изображения, исключая фотки для коллажа
