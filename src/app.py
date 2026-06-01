@@ -226,7 +226,7 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
 
                     is_any_irbis = False
                     bboxed_image_paths: list[Path] = []
-                    collage_images: list[str] = []
+                    collage_image_paths: list[Path] = []
                     # Итерируемся по изображениям в извелеченном архиве
                     for extracted_file in Path(extracted_images_dir).glob('**/*'):
                         logger.debug(f"Extracted file: {extracted_file}")
@@ -239,27 +239,24 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                         is_any_irbis = model.detect_image(extracted_file, output_path) or is_any_irbis
                         # Отдаем пользователю исходный набор фото,
                         # сохраняем в результат **все** фотографии
-                        output_from_archive_path = output_path.relative_to(get_output_images_dpath())
-                        logger.debug(f"From-archive path: {output_from_archive_path}")
-                        bboxed_image_paths.append(output_from_archive_path)
+                        output_relative_path = output_path.relative_to(get_project_root())
                         # Заполняем список ссылок для превью архива в фронтенде
-                        if len(collage_images) < ARCHIVE_COLLAGE_SIZE:
-                            output_relative_path = output_path.relative_to(get_project_root())
-                            logger.debug(f"From-project path: {output_relative_path}")
-                            bboxed_image_link = urljoin(ROOT_LINK, str(output_relative_path))
-                            collage_images.append(bboxed_image_link)
+                        if len(collage_image_paths) < ARCHIVE_COLLAGE_SIZE:
+                            collage_image_paths.append(output_relative_path)
+                        else:
+                            bboxed_image_paths.append(output_relative_path)
 
                     logger.debug(f"""
                         is_any_irbis: {is_any_irbis}
-                        collage_images: {collage_images}
+                        collage_images: {collage_image_paths}
                     """)
-                    if not is_any_irbis or not collage_images:
+                    if not is_any_irbis or not collage_image_paths:
                         return TEMPLATE_RESPONSES[RecognitionStatus.NO_IRBIS_FOUND]
 
                     # Boostrap'аем коллаж, если он не смог набраться
                     # из обработанных изображений
-                    while len(collage_images) < ARCHIVE_COLLAGE_SIZE:
-                        collage_images.append(collage_images[-1])
+                    while len(collage_image_paths) < ARCHIVE_COLLAGE_SIZE:
+                        collage_image_paths.append(collage_image_paths[-1])
 
                     # Собираем свой архив с обработанными изображениями
                     output_archive_path = get_output_archives_dpath() / f'{get_uuid4()}.zip'
@@ -268,16 +265,20 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                     patoolib.create_archive(
                         str(output_archive_path),
                         # Проблема в СWD
-                        ['output/images/' + str(path) for path in bboxed_image_paths]
+                        bboxed_image_paths + collage_image_paths
                     )
                     # Удаляем обработанные изображения, исключая фотки для коллажа
-                    for path in [Path('output/images') / path for path in bboxed_image_paths]:
-                        if path not in collage_images:
-                            path.unlink()
+                    for path in bboxed_image_paths:
+                        path.unlink()
+
+                    collage_links: list[str] = []
+                    for path in collage_image_paths:
+                        collage_image_link = urljoin(ROOT_LINK, str(path))
+                        collage_links.append(collage_image_link)
 
                     output_archive_link = register_link_on_file(output_archive_path)
                     return MultiImageSuccessResponse(
                         status=RecognitionStatus.IRBIS_FOUND,
                         link=output_archive_link,
-                        collage_images=collage_images
+                        collage_images=collage_links
                     )
