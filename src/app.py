@@ -1,7 +1,8 @@
+import shutil
 from pathlib import Path
+import subprocess
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Final
-from urllib.parse import urljoin
 
 import patoolib
 from fastapi import FastAPI, UploadFile
@@ -16,6 +17,9 @@ from src.paths import (
     get_output_images_dpath,
     get_output_videos_dpath,
     get_project_root,
+    get_backend_logs_path,
+    get_output_images_with_irbis_dpath,
+    get_output_images_with_bg_dpath
 )
 from src.templates import TEMPLATE_RESPONSES, TemplateException
 from src.types import (
@@ -33,8 +37,8 @@ from src.utils import (
     ROOT_LINK
 )
 
+logger.add(get_backend_logs_path(), level='DEBUG')
 app = FastAPI()
-logger.add('backend_inf.log', level='DEBUG')
 model = Model()
 
 origins = [
@@ -225,32 +229,38 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                 with TemporaryDirectory() as extracted_images_dir:
                     patoolib.extract_archive(archive_file.name, outdir=extracted_images_dir)
 
-                    is_any_irbis = False
                     bboxed_image_paths: list[Path] = []
+                    no_bboxed_image_paths: list[Path] = []
                     collage_image_paths: list[Path] = []
                     # Итерируемся по изображениям в извелеченном архиве
                     for extracted_file in Path(extracted_images_dir).glob('**/*'):
                         logger.debug(f"Extracted file: {extracted_file}")
-                        logger.debug(f"Relative extracted file: {extracted_file.relative_to(extracted_images_dir).parent}")
+                        logger.debug(f"Relative extracted file: {extracted_file.relative_to(extracted_images_dir)}")
+                        logger.debug(f"Relative suffix path: {extracted_file.relative_to(extracted_images_dir).parent}")
                         file_ext = extracted_file.suffix.lower()
                         if file_ext not in SUPPORTED_IMAGE_TYPES:
                             continue
 
+                        # /.../output/images/1234.jpg
                         output_path = get_output_images_dpath() / f'{get_uuid4()}{file_ext}'
-                        logger.debug(f"Absolute file path: {output_path}")
-                        is_any_irbis = model.detect_image(extracted_file, output_path) or is_any_irbis
-                        # Отдаем пользователю исходный набор фото,
-                        # сохраняем в результат **все** фотографии
+                        logger.debug(f"Absolute new-file path: {output_path}")
+                        is_irbis = model.detect_image(extracted_file, output_path)
+                        # ./output/images/1234.jpg
                         output_relative_path = output_path.relative_to(get_project_root())
-                        # Заполняем список ссылок для превью архива в фронтенде
-                        if len(collage_image_paths) < ARCHIVE_COLLAGE_SIZE:
+                        # Заполняем коллаж фотками с барсом
+                        if len(collage_image_paths) < ARCHIVE_COLLAGE_SIZE and is_irbis:
                             collage_image_paths.append(output_relative_path)
-                        else:
+                        # Продолжаем сохранять фото с архивом
+                        elif is_irbis:  # коллаж заполнен
                             bboxed_image_paths.append(output_relative_path)
+                        # Фото без барса тоже сохраняем
+                        else:  # not is_irbis
+                            no_bboxed_image_paths.append(output_relative_path)
 
-                    logger.debug(f"is_any_irbis: {is_any_irbis}")
                     logger.debug(f"collage_images:\n{collage_image_paths}")
-                    if not is_any_irbis or not collage_image_paths:
+                    logger.debug(f"bboxed_images:\n{bboxed_image_paths}")
+                    logger.debug(f"no_bboxed_images:\n {no_bboxed_image_paths}")
+                    if not collage_image_paths:
                         return TEMPLATE_RESPONSES[RecognitionStatus.NO_IRBIS_FOUND]
 
                     # Boostrap'аем коллаж, если он не смог набраться
@@ -258,22 +268,37 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                     while len(collage_image_paths) < ARCHIVE_COLLAGE_SIZE:
                         collage_image_paths.append(collage_image_paths[-1])
 
+                    # ./output/images/snow_leopards/1234.jpg
+                    archive_bboxed_images: list[Path] = []
+                    archive_bg_images: list[Path] = []
+                    for path in collage_image_paths + bboxed_image_paths:
+                        # cp ./output/images/1234.jpg /.../output/images/snow_leopards
+                        shutil.copy(path, get_output_images_with_irbis_dpath())
+                        #
+                        archive_bboxed_images.append(get_output_images_with_irbis_dpath().relative_to(get_output_images_dpath()) / path.name)
+                    for path in no_bboxed_image_paths:
+                        shutil.copy(path, get_output_images_with_bg_dpath())
+                        archive_bg_images.append(get_output_images_with_bg_dpath().relative_to(get_output_images_dpath()) / path.name)
+
                     # Собираем свой архив с обработанными изображениями
-                    output_archive_path = get_output_archives_dpath() / f'{get_uuid4()}.zip'
+                    archive_name = f"{get_uuid4()}.zip"
+                    output_archive_path = get_output_images_dpath() / archive_name
                     logger.debug(f"Output archive path: {output_archive_path}")
-                    logger.debug(f"Bboxed_image_paths:\n{bboxed_image_paths}")
-                    output_image_paths = [str(path.resolve()) for path in (bboxed_image_paths + collage_image_paths)]
+                    output_image_paths = [str(path) for path in archive_bboxed_images + archive_bg_images]
                     logger.debug(f"Files to archive: {output_image_paths}")
-                    patoolib.create_archive(str(output_archive_path), output_image_paths)
+                    create_archive = subprocess.Popen(
+                        f'patool create {archive_name} {' '.join(output_image_paths)}',
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        cwd=get_output_images_dpath()
+                    )
+                    create_archive.communicate()
 
                     # Удаляем обработанные изображения, исключая фотки для коллажа
                     for path in bboxed_image_paths:
                         path.unlink()
 
-                    collage_links: list[str] = []
-                    for path in collage_image_paths:
-                        collage_image_link = urljoin(ROOT_LINK, path.as_posix())
-                        collage_links.append(collage_image_link)
+                    collage_links: list[str] = [register_link_on_file(path.resolve()) for path in collage_image_paths]
 
                     output_archive_link = register_link_on_file(output_archive_path)
                     return MultiImageSuccessResponse(

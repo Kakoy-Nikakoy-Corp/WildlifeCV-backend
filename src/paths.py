@@ -40,6 +40,18 @@ def get_output_images_dpath() -> Path:
 
 
 @fixdir
+def get_output_images_with_irbis_dpath() -> Path:
+    """Возвращает путь к директории с обработанными фото с барсами."""
+    return get_output_images_dpath() / 'snow_leopards'
+
+
+@fixdir
+def get_output_images_with_bg_dpath() -> Path:
+    """Возвращает путь к директории с обработанными фото без барсов."""
+    return get_output_images_dpath() / 'backgrounds'
+
+
+@fixdir
 def get_output_archives_dpath() -> Path:
     """Возвращает путь к директории с обработанными архивами."""
     return get_output_dpath() / 'archives'
@@ -70,3 +82,18 @@ def get_yolo_weights_path() -> Path:
     if onnx_path.exists():
         return onnx_path
     return get_model_weights_dpath() / 'best.pt'
+
+
+@fixdir
+def get_logs_dpath() -> Path:
+    """Возвращает путь к логам проекта."""
+    return get_project_root() / 'logs'
+
+
+def get_backend_logs_path() -> Path:
+    """Возвращает путь к файлу с логами бэкенда."""
+    return get_logs_dpath() / 'backend_inf.log'
+
+
+def get_model_logs_path() -> Path:
+    return get_logs_dpath() / 'model_inf.log'
