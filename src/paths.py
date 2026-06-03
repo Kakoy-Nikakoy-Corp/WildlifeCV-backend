@@ -66,4 +66,7 @@ def get_yolo_weights_path() -> Path:
     if cuda.is_available():
         return get_model_weights_dpath() / 'best.engine'
 
-    return get_model_weights_dpath() / 'best.onnx'
+    onnx_path = get_model_weights_dpath() / 'best.onnx'
+    if onnx_path.exists():
+        return onnx_path
+    return get_model_weights_dpath() / 'best.pt'

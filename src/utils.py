@@ -3,6 +3,7 @@ from typing import IO, Final
 from urllib.parse import urljoin
 from uuid import uuid4
 
+from loguru import logger
 import puremagic
 import torch
 import torchvision.transforms.v2.functional as f
@@ -29,7 +30,8 @@ def register_link_on_file(file_path: Path, root_url: str = ROOT_LINK) -> str:
         file_path: Путь до файла.
         root_url: Корневой URL сайта.
     """
-    relative_file_path = str(file_path.relative_to(get_project_root()))
+    # Как удобно, что разделитель в путях POSIX - это и разделитель в URL :)
+    relative_file_path = file_path.relative_to(get_project_root()).as_posix()
     return urljoin(root_url, relative_file_path)
 
 
@@ -45,7 +47,6 @@ async def download_file(io: IO[bytes], file: UploadFile) -> RecognitionStatus:
     Parameters:
         io: Открытый файл (от open() или контекстного менеджера)
         file: Файл от бэкенда
-        ext: Расширение файла
     """
     total_size = 0
     try:
@@ -72,8 +73,10 @@ def get_file_extension(filename: str) -> str:
     Parameters:
         filename: Имя файла
     """
+    from loguru import logger
     file_path = Path(filename)
-    if file_path.suffix is None:
+    logger.debug(f"File path: {file_path}, file extension: {file_path.suffix}")
+    if not file_path.suffix:
         return puremagic.from_file(file_path)
     return file_path.suffix
 
