@@ -62,7 +62,8 @@ class Model:
 
         # Rescaling
         orig_shape = original_image.shape[-2:]
-        scaled_bboxes = rescale_bboxes(bboxes, orig_shape, 640)
+        target_size = (min(orig_shape) // 32) * 32
+        scaled_bboxes = rescale_bboxes(bboxes, orig_shape, target_size)
 
         peak_conf = float(conf.max())
 
@@ -90,10 +91,11 @@ class Model:
             A single ModelPrediction or a sequence of them via an Iterator.
         """
         # Letterbox and normalize tensors
-        preprocessed_frames: torch.Tensor = preprocess(frames, 640)
+        target_size = (min(frames.shape[-2:]) // 32) * 32
+        preprocessed_frames: torch.Tensor = preprocess(frames, target_size)
 
         # Feed tensors to YOLO to obtain an actual prediction
-        results_list: list[Results] = self.__model(preprocessed_frames, conf=threshold, verbose=self.__verbose, device=self.__device)
+        results_list: list[Results] = self.__model(preprocessed_frames, conf=threshold, verbose=self.__verbose, device=self.__device, imgsz=(target_size, target_size))
 
         # Return a single prediction
         if single:
