@@ -199,11 +199,18 @@ def blit_text(frame: torch.Tensor, text: str, atlas: dict, pos_x: int, pos_y: in
     color_tensor = torch.tensor(text_color, dtype=frame.dtype, device=frame.device).view(-1, 1, 1)
     stroke_tensor = torch.tensor(stroke_color, dtype=frame.dtype, device=frame.device).view(-1, 1, 1)
 
+    height, width = frame.shape[-2:]
+    font_size = max(min(int((width ** 0.5) * 0.93), 100), 10)
+
     for c in text:
-        fill_mask: torch.Tensor = atlas[c]['fill'].unsqueeze(0)
-        stroke_mask: torch.Tensor = atlas[c]['stroke'].unsqueeze(0)
+        fill_mask: torch.Tensor = atlas[font_size][c]['fill'].unsqueeze(0)
+        stroke_mask: torch.Tensor = atlas[font_size][c]['stroke'].unsqueeze(0)
 
         _, gh, gw = fill_mask.shape
+
+        if pos_y + gh > height or current_x + gw > width:
+            break
+
         roi = frame[:, pos_y:pos_y + gh, current_x:current_x + gw]
 
         roi = roi * (1 - fill_mask) + color_tensor * fill_mask

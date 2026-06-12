@@ -9,7 +9,10 @@ from src.types import ProcessedVideo, ProcessedFrame
 class OverlayEncoder:
     def __init__(self, device: str) -> None:
         self.__encoder: Encoder | None = None
-        self.glyph_atlas = make_glyph_atlas(device=device)
+
+        self.glyph_atlas = {}
+        for font_size in range(10, 101):
+            self.glyph_atlas[font_size] = make_glyph_atlas(font_size, device=device)
 
         if device == 'cpu':
             self.__params = {
@@ -56,7 +59,11 @@ class OverlayEncoder:
     def add_frame(self, frame: ProcessedFrame) -> None:
         if self.__last_timecode is None or frame.timecode > self.__last_timecode:
             img = frame.prediction.img
-            final_img = blit_text(img, str(frame.timecode), self.glyph_atlas, self.video.width - 300, 30)
+            _, w = img.shape[-2:]
+            font_width = max(min(int((w ** 0.5) * 0.93), 100), 10) / 1.6
+            timestamp_offset = int(font_width * 12)
+
+            final_img = blit_text(img, str(frame.timecode), self.glyph_atlas, self.video.width - timestamp_offset, 30)
             self.__stream.add_frames(final_img.unsqueeze(0))
 
             self.__last_timecode = frame.timecode
