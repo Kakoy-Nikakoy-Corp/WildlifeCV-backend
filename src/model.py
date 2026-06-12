@@ -38,7 +38,7 @@ class Model:
 
         logger.add('model_inf.log', level='INFO')
 
-    def __postprocess(self, results: Results, original_image: torch.Tensor, target_shape: tuple) -> ModelPrediction:
+    def __postprocess(self, results: Results, original_image: torch.Tensor) -> ModelPrediction:
         """
         Obtain all necessary fields from a `ultralytics.engine.results.Results` object.
 
@@ -62,7 +62,7 @@ class Model:
 
         # Rescaling
         orig_shape = original_image.shape[-2:]
-        scaled_bboxes = rescale_bboxes(bboxes, orig_shape, target_shape)
+        scaled_bboxes = rescale_bboxes(bboxes, orig_shape, 640)
 
         peak_conf = float(conf.max())
 
@@ -90,19 +90,19 @@ class Model:
             A single ModelPrediction or a sequence of them via an Iterator.
         """
         # Letterbox and normalize tensors
-        preprocessed_frames, h, w = preprocess(frames, 640)
+        preprocessed_frames: torch.Tensor = preprocess(frames, 640)
 
         # Feed tensors to YOLO to obtain an actual prediction
-        results_list: list[Results] = self.__model(preprocessed_frames, conf=threshold, verbose=self.__verbose, device=self.__device, imgsz=(h, w))
+        results_list: list[Results] = self.__model(preprocessed_frames, conf=threshold, verbose=self.__verbose, device=self.__device)
 
         # Return a single prediction
         if single:
-            return self.__postprocess(results_list[0], frames, (h, w))
+            return self.__postprocess(results_list[0], frames)
 
         # Generate results one by one in case of batch prediction
         def results_iterator() -> Iterator[ModelPrediction]:
             for i, results in enumerate(results_list):
-                yield self.__postprocess(results, frames[i], (h, w))
+                yield self.__postprocess(results, frames[i])
 
         return results_iterator()
 
