@@ -8,6 +8,8 @@ RUN apt-get update && \
 
 RUN pip install fastapi[standard]>=0.136.1 loguru>=0.7.3 numpy>=2.4.4 pydantic>=2.13.4 timecode>=1.5.1 uvicorn>=0.46.0 pillow>=12.2.0 puremagic>=2.2.0 patool>=4.0.5
 RUN pip install ultralytics>=8.4.51
+
+RUN pip install --force-reinstall --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu132
 RUN pip install torchcodec>=0.14
 
 COPY src/ src/
