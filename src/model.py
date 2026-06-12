@@ -62,7 +62,7 @@ class Model:
 
         # Rescaling
         orig_shape = original_image.shape[-2:]
-        scaled_bboxes = rescale_bboxes(bboxes, orig_shape, 736)
+        scaled_bboxes = rescale_bboxes(bboxes, orig_shape, 640)
 
         peak_conf = float(conf.max())
 
@@ -90,7 +90,7 @@ class Model:
             A single ModelPrediction or a sequence of them via an Iterator.
         """
         # Letterbox and normalize tensors
-        preprocessed_frames: torch.Tensor = preprocess(frames, 736)
+        preprocessed_frames: torch.Tensor = preprocess(frames, 640)
 
         # Feed tensors to YOLO to obtain an actual prediction
         results_list: list[Results] = self.__model(preprocessed_frames, conf=threshold, verbose=self.__verbose, device=self.__device)
@@ -155,7 +155,7 @@ class Model:
 
         return ProcessedVideo(fps / gap, width, height, total_frames, frames_iterator())
 
-    def detect_video_intervals(
+    def radic(
             self,
             video_path: Path,
             output_path: Path,

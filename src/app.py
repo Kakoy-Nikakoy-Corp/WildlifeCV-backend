@@ -135,9 +135,10 @@ async def recognise_video(
                 output_name = f'{get_uuid4()}.mp4'
                 output_path = get_output_videos_dpath() / output_name
                 video_path = Path(video_file.name)
-                timestrings = model.detect_video_intervals(
+                timestrings = model.radic(
                     video_path, output_path,
-                    window_threshold=0.5,
+                    window_threshold=0.3,
+                    threshold=0.08,
                     smoothing_interval=3,
                     gap=10,
                     batch_size=32

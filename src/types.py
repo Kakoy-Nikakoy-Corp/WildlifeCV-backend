@@ -118,7 +118,7 @@ class TimeInterval:
 
 
 class ModelProtocol(Protocol):
-    def detect_video_timeintervals(
+    def radic(
         self,
         video_path: Path,
         output_path: Path,
