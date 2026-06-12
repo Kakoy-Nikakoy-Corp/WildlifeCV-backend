@@ -75,7 +75,7 @@ ARCHIVE_COLLAGE_SIZE: Final = 4
 
 
 @app.get("/output/{folder}/{filename}")
-async def download_video(folder: str, filename: str) -> FileResponse:
+async def download_media(folder: str, filename: str) -> FileResponse:
     file_path = get_output_dpath() / folder / filename
     if not file_path.exists():
         raise TemplateException.NOT_FOUND.value
@@ -279,13 +279,16 @@ async def recognise_archive(
                     # ./output/images/snow_leopards/1234.jpg
                     archive_bboxed_images: list[Path] = []
                     archive_bg_images: list[Path] = []
-                    for path in collage_image_paths + bboxed_image_paths:
-                        # cp ./output/images/1234.jpg /.../output/images/snow_leopards
+                    for path in collage_image_paths:
                         shutil.copy(path, get_output_images_with_irbis_dpath())
-                        #
                         archive_bboxed_images.append(get_output_images_with_irbis_dpath().relative_to(get_output_images_dpath()) / path.name)
+
+                    for path in bboxed_image_paths:
+                        shutil.move(path, get_output_images_with_irbis_dpath())
+                        archive_bboxed_images.append(get_output_images_with_irbis_dpath().relative_to(get_output_images_dpath()) / path.name)
+
                     for path in no_bboxed_image_paths:
-                        shutil.copy(path, get_output_images_with_bg_dpath())
+                        shutil.move(path, get_output_images_with_bg_dpath())
                         archive_bg_images.append(get_output_images_with_bg_dpath().relative_to(get_output_images_dpath()) / path.name)
 
                     # Собираем свой архив с обработанными изображениями
@@ -295,7 +298,7 @@ async def recognise_archive(
                     output_image_paths = [str(path) for path in archive_bboxed_images + archive_bg_images]
                     logger.debug(f"Files to archive: {output_image_paths}")
                     create_archive = subprocess.Popen(
-                        f'patool create {archive_name} {' '.join(output_image_paths)}',
+                        ['patool', 'create', archive_name] + output_image_paths,
                         stdin=subprocess.PIPE,
                         stdout=subprocess.PIPE,
                         cwd=get_output_images_dpath()
