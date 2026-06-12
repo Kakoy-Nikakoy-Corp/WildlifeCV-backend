@@ -16,13 +16,12 @@ from src.paths import get_project_root
 from src.types import LetterboxParams, RecognitionStatus
 
 
-ROOT_LINK: Final = 'https://api.irbis.wild1.net'
 MAX_SIZE_MIB: Final = 500
 CHUNK_SIZE: Final = 8 * 1024 * 1024  # 8 мебибайт
 CHARS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', ':', ';']
 
 
-def register_link_on_file(file_path: Path, root_url: str = ROOT_LINK) -> str:
+def register_link_on_file(file_path: Path, root_url: str) -> str:
     """
     Создает URL-ссылку на файл.
 

@@ -5,7 +5,7 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Final
 
 import patoolib
-from fastapi import FastAPI, UploadFile
+from fastapi import FastAPI, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from loguru import logger
@@ -34,7 +34,6 @@ from src.utils import (
     get_file_extension,
     get_uuid4,
     register_link_on_file,
-    ROOT_LINK
 )
 
 logger.add(get_backend_logs_path(), level='DEBUG')
@@ -101,7 +100,10 @@ async def download_video(folder: str, filename: str) -> FileResponse:
 
 
 @app.post("/recognise/video/")
-async def recognise_video(file: UploadFile) -> VideoSuccessResponse | LoadingErrorResponse:
+async def recognise_video(
+    request: Request,
+    file: UploadFile
+) -> VideoSuccessResponse | LoadingErrorResponse:
     """
     Запускает пайплайн на видеофайле.
 
@@ -143,7 +145,7 @@ async def recognise_video(file: UploadFile) -> VideoSuccessResponse | LoadingErr
                 if not timestrings:
                     return TEMPLATE_RESPONSES[RecognitionStatus.NO_IRBIS_FOUND]
 
-                bboxed_video_link = register_link_on_file(output_path)
+                bboxed_video_link = register_link_on_file(output_path, str(request.base_url))
                 return VideoSuccessResponse(
                     status=RecognitionStatus.IRBIS_FOUND,
                     timestrings=timestrings,
@@ -152,7 +154,10 @@ async def recognise_video(file: UploadFile) -> VideoSuccessResponse | LoadingErr
 
 
 @app.post("/recognise/image/")
-async def recognise_image(file: UploadFile) -> ImageSuccessResponse | LoadingErrorResponse:
+async def recognise_image(
+    request: Request,
+    file: UploadFile
+) -> ImageSuccessResponse | LoadingErrorResponse:
     """
     Запускает пайплайн на изображении.
 
@@ -187,7 +192,7 @@ async def recognise_image(file: UploadFile) -> ImageSuccessResponse | LoadingErr
                 if not is_found:
                     return TEMPLATE_RESPONSES[RecognitionStatus.NO_IRBIS_FOUND]
 
-                bboxed_image_link = register_link_on_file(output_path)
+                bboxed_image_link = register_link_on_file(output_path, str(request.base_url))
                 return ImageSuccessResponse(
                     status=RecognitionStatus.IRBIS_FOUND,
                     link=bboxed_image_link
@@ -195,7 +200,10 @@ async def recognise_image(file: UploadFile) -> ImageSuccessResponse | LoadingErr
 
 
 @app.post("/recognise/multi-image/")
-async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | LoadingErrorResponse:
+async def recognise_archive(
+    request: Request,
+    file: UploadFile
+) -> MultiImageSuccessResponse | LoadingErrorResponse:
     """
     Запускает пайплайн на архиве изображений.
 
@@ -298,9 +306,11 @@ async def recognise_archive(file: UploadFile) -> MultiImageSuccessResponse | Loa
                     for path in bboxed_image_paths:
                         path.unlink()
 
-                    collage_links: list[str] = [register_link_on_file(path.resolve()) for path in collage_image_paths]
+                    moved_archive_path = shutil.move(output_archive_path, get_output_archives_dpath())
 
-                    output_archive_link = register_link_on_file(output_archive_path)
+                    root_url = str(request.base_url)
+                    collage_links: list[str] = [register_link_on_file(path.resolve(), root_url) for path in collage_image_paths]
+                    output_archive_link = register_link_on_file(Path(moved_archive_path), root_url)
                     return MultiImageSuccessResponse(
                         status=RecognitionStatus.IRBIS_FOUND,
                         link=output_archive_link,
