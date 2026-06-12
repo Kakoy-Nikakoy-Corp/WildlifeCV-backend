@@ -306,8 +306,8 @@ async def recognise_archive(
                     create_archive.communicate()
 
                     # Удаляем обработанные изображения, исключая фотки для коллажа
-                    for path in bboxed_image_paths:
-                        path.unlink()
+                    for path in archive_bboxed_images + archive_bg_images:
+                        (get_output_images_dpath() / path).unlink()
 
                     moved_archive_path = shutil.move(output_archive_path, get_output_archives_dpath())
 
