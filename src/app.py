@@ -137,10 +137,11 @@ async def recognise_video(
                 video_path = Path(video_file.name)
                 timestrings = model.radic(
                     video_path, output_path,
-                    window_threshold=0.6,
-                    threshold=0.01,
+                    window_coef=2,
+                    window_threshold=0.5,
+                    threshold=0.1,
                     smoothing_interval=3,
-                    gap=10,
+                    gap=5,
                     batch_size=32
                 )
                 if not timestrings:
