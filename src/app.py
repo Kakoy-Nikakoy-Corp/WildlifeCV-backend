@@ -309,7 +309,8 @@ async def recognise_archive(
 
                     # Удаляем обработанные изображения, исключая фотки для коллажа
                     for path in archive_bboxed_images + archive_bg_images:
-                        (get_output_images_dpath() / path).unlink()
+                        # missing_ok = True - в случае bootstrap'а коллажа
+                        (get_output_images_dpath() / path).unlink(missing_ok=True)
 
                     moved_archive_path = shutil.move(output_archive_path, get_output_archives_dpath())
 
