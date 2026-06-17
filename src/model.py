@@ -268,6 +268,12 @@ class Model:
             Наличие барса на изображении.
         """
         image_tensor = decode_image(str(image_path)).to(self.__device)
+
+        if image_tensor.shape[0] == 4:
+            rgb = image_tensor[:3].float()
+            alpha = image_tensor[3:4].float() / 255.0
+            image_tensor = (rgb * alpha + 255 * (1 - alpha)).to(image_tensor.dtype)
+
         pred: ModelPrediction = self.__make_prediction(image_tensor, single=True, threshold=threshold)
         write_jpeg(pred.img.to('cpu'), output_path)
         return pred.peak_conf != 0
