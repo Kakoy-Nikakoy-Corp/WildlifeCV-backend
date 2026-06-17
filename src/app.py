@@ -300,7 +300,7 @@ async def recognise_archive(
                     output_image_paths = [str(path) for path in archive_bboxed_images + archive_bg_images]
                     logger.debug(f"Files to archive: {output_image_paths}")
                     create_archive = subprocess.Popen(
-                        ['patool', 'create', archive_name] + output_image_paths,
+                        ['patool', 'create', archive_name] + list(set(output_image_paths)),
                         stdin=subprocess.PIPE,
                         stdout=subprocess.PIPE,
                         cwd=get_output_images_dpath()
